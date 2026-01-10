@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: taulen-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: taulen
+      POSTGRES_PASSWORD: taulen_dev_password
+      POSTGRES_DB: taulen_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./urla-sql-postgres.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taulen"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - taulen-network
+
+  mongodb:
+    image: mongo:7
+    container_name: taulen-mongodb
+    restart: unless-stopped
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: taulen_mongo
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - taulen-network
+
+volumes:
+  postgres_data:
+    driver: local
+  mongodb_data:
+    driver: local
+
+networks:
+  taulen-network:
+    driver: bridge

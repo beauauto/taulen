@@ -1,0 +1,82 @@
+# Build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/tmp/
+/dist/
+/build/
+/.next/
+/out/
+
+# Dependencies
+node_modules/
+vendor/
+*.lock
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Go specific
+backend/bin/
+backend/tmp/
+*.test
+*.prof
+
+# Frontend specific
+frontend/.next/
+frontend/node_modules/
+frontend/.vercel
+frontend/.turbo
+
+# Docker
+docker-compose.override.yml
+
+# Generated files
+backend/internal/db/
+backend/internal/database/migrations/*.sql
+!backend/internal/database/migrations/.gitkeep
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# PDFs and documents (if not needed in repo)
+*.pdf
+!**/README.md
+
+# Notes
+*-note
+*.note
