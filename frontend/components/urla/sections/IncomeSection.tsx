@@ -11,11 +11,11 @@ interface IncomeSectionProps {
 
 export function IncomeSection({ data, onChange, errors }: IncomeSectionProps) {
   const formData = data || {
-    base_income: 0,
+    baseIncome: 0,
     overtime: 0,
     bonuses: 0,
     commissions: 0,
-    other_income: 0,
+    otherIncome: 0,
   }
 
   const updateField = (field: keyof IncomeInfo, value: any) => {
@@ -23,11 +23,11 @@ export function IncomeSection({ data, onChange, errors }: IncomeSectionProps) {
   }
 
   const totalIncome =
-    (formData.base_income || 0) +
+    (formData.baseIncome || 0) +
     (formData.overtime || 0) +
     (formData.bonuses || 0) +
     (formData.commissions || 0) +
-    (formData.other_income || 0)
+    (formData.otherIncome || 0)
 
   return (
     <div className="space-y-4">
@@ -35,8 +35,8 @@ export function IncomeSection({ data, onChange, errors }: IncomeSectionProps) {
         <label className="block text-sm font-medium mb-1">Base Monthly Income *</label>
         <Input
           type="number"
-          value={formData.base_income || ''}
-          onChange={(e) => updateField('base_income', parseFloat(e.target.value) || 0)}
+          value={formData.baseIncome || ''}
+          onChange={(e) => updateField('baseIncome', parseFloat(e.target.value) || 0)}
           placeholder="5000"
         />
       </div>
@@ -75,18 +75,18 @@ export function IncomeSection({ data, onChange, errors }: IncomeSectionProps) {
         <label className="block text-sm font-medium mb-1">Other Income</label>
         <Input
           type="number"
-          value={formData.other_income || ''}
-          onChange={(e) => updateField('other_income', parseFloat(e.target.value) || 0)}
+          value={formData.otherIncome || ''}
+          onChange={(e) => updateField('otherIncome', parseFloat(e.target.value) || 0)}
           placeholder="500"
         />
       </div>
 
-      {formData.other_income && formData.other_income > 0 && (
+      {formData.otherIncome && formData.otherIncome > 0 && (
         <div>
           <label className="block text-sm font-medium mb-1">Other Income Description</label>
           <Input
-            value={formData.other_income_description || ''}
-            onChange={(e) => updateField('other_income_description', e.target.value)}
+            value={formData.otherIncomeDescription || ''}
+            onChange={(e) => updateField('otherIncomeDescription', e.target.value)}
             placeholder="Describe source of other income"
           />
         </div>

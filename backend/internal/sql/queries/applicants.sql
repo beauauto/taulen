@@ -1,17 +1,17 @@
 -- name: CreateApplicant :one
 INSERT INTO applicants (
-    loan_application_id, is_primary_applicant, first_name, last_name, middle_name,
+    loan_application_id, user_id, is_primary_applicant, first_name, last_name, middle_name,
     suffix, ssn, date_of_birth, years_school, marital_status, dependents_count,
     dependents_ages, citizenship_status, alien_registration_no, veteran_status,
     military_service_years, is_borrower_declining_info, ethnicity, ethnicity_other,
-    race, race_other, gender
+    race, race_other, gender, email, password_hash
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25
 ) RETURNING applicant_id, loan_application_id, is_primary_applicant, first_name, last_name, created_date;
 
 -- name: GetApplicantByID :one
 SELECT 
-    applicant_id, loan_application_id, is_primary_applicant, first_name, middle_name,
+    applicant_id, loan_application_id, user_id, email, password_hash, is_primary_applicant, first_name, middle_name,
     last_name, suffix, ssn, date_of_birth, years_school, marital_status,
     dependents_count, dependents_ages, citizenship_status, alien_registration_no,
     veteran_status, military_service_years, is_borrower_declining_info,

@@ -5,10 +5,12 @@ export function middleware(request: NextRequest) {
   const token = request.cookies.get('token')?.value
 
   // Protected routes
-  const protectedRoutes = ['/dashboard', '/applications']
+  // Allow /applications/new to be accessed without auth (it handles its own auth check)
+  const isNewApplication = request.nextUrl.pathname === '/applications/new'
+  const protectedRoutes = ['/dashboard']
   const isProtectedRoute = protectedRoutes.some((route) =>
     request.nextUrl.pathname.startsWith(route)
-  )
+  ) || (request.nextUrl.pathname.startsWith('/applications') && !isNewApplication)
 
   // Auth routes (should redirect to dashboard if already logged in)
   const authRoutes = ['/login', '/register']

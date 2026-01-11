@@ -20,21 +20,21 @@ export function BorrowerInfoSection({ data, onChange, errors }: BorrowerInfoSect
         <div>
           <label className="block text-sm font-medium mb-1">First Name *</label>
           <Input
-            value={data.first_name}
-            onChange={(e) => updateField('first_name', e.target.value)}
+            value={data.firstName}
+            onChange={(e) => updateField('firstName', e.target.value)}
             placeholder="John"
-            className={errors.first_name ? 'border-red-500' : ''}
+            className={errors.firstName ? 'border-red-500' : ''}
           />
-          {errors.first_name && (
-            <p className="text-xs text-red-500 mt-1">{errors.first_name}</p>
+          {errors.firstName && (
+            <p className="text-xs text-red-500 mt-1">{errors.firstName}</p>
           )}
         </div>
 
         <div>
           <label className="block text-sm font-medium mb-1">Middle Name</label>
           <Input
-            value={data.middle_name || ''}
-            onChange={(e) => updateField('middle_name', e.target.value)}
+            value={data.middleName || ''}
+            onChange={(e) => updateField('middleName', e.target.value)}
             placeholder="Michael"
           />
         </div>
@@ -44,13 +44,13 @@ export function BorrowerInfoSection({ data, onChange, errors }: BorrowerInfoSect
         <div>
           <label className="block text-sm font-medium mb-1">Last Name *</label>
           <Input
-            value={data.last_name}
-            onChange={(e) => updateField('last_name', e.target.value)}
+            value={data.lastName}
+            onChange={(e) => updateField('lastName', e.target.value)}
             placeholder="Doe"
-            className={errors.last_name ? 'border-red-500' : ''}
+            className={errors.lastName ? 'border-red-500' : ''}
           />
-          {errors.last_name && (
-            <p className="text-xs text-red-500 mt-1">{errors.last_name}</p>
+          {errors.lastName && (
+            <p className="text-xs text-red-500 mt-1">{errors.lastName}</p>
           )}
         </div>
 
@@ -87,22 +87,22 @@ export function BorrowerInfoSection({ data, onChange, errors }: BorrowerInfoSect
         <label className="block text-sm font-medium mb-1">Date of Birth *</label>
         <Input
           type="date"
-          value={data.date_of_birth}
-          onChange={(e) => updateField('date_of_birth', e.target.value)}
-          className={errors.date_of_birth ? 'border-red-500' : ''}
+          value={data.dateOfBirth}
+          onChange={(e) => updateField('dateOfBirth', e.target.value)}
+          className={errors.dateOfBirth ? 'border-red-500' : ''}
         />
-        {errors.date_of_birth && (
-          <p className="text-xs text-red-500 mt-1">{errors.date_of_birth}</p>
+        {errors.dateOfBirth && (
+          <p className="text-xs text-red-500 mt-1">{errors.dateOfBirth}</p>
         )}
       </div>
 
       <div>
         <label className="block text-sm font-medium mb-1">Marital Status *</label>
         <select
-          value={data.marital_status}
-          onChange={(e) => updateField('marital_status', e.target.value)}
+          value={data.maritalStatus}
+          onChange={(e) => updateField('maritalStatus', e.target.value)}
           className={`w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ${
-            errors.marital_status ? 'border-red-500' : ''
+            errors.maritalStatus ? 'border-red-500' : ''
           }`}
         >
           <option value="">Select...</option>
@@ -112,8 +112,8 @@ export function BorrowerInfoSection({ data, onChange, errors }: BorrowerInfoSect
           <option value="Divorced">Divorced</option>
           <option value="Widowed">Widowed</option>
         </select>
-        {errors.marital_status && (
-          <p className="text-xs text-red-500 mt-1">{errors.marital_status}</p>
+        {errors.maritalStatus && (
+          <p className="text-xs text-red-500 mt-1">{errors.maritalStatus}</p>
         )}
       </div>
 
@@ -122,18 +122,18 @@ export function BorrowerInfoSection({ data, onChange, errors }: BorrowerInfoSect
         <Input
           type="number"
           min="0"
-          value={data.dependents_count || 0}
-          onChange={(e) => updateField('dependents_count', parseInt(e.target.value) || 0)}
+          value={data.dependentsCount || 0}
+          onChange={(e) => updateField('dependentsCount', parseInt(e.target.value) || 0)}
         />
       </div>
 
       <div>
         <label className="block text-sm font-medium mb-1">Citizenship Status *</label>
         <select
-          value={data.citizenship_status}
-          onChange={(e) => updateField('citizenship_status', e.target.value)}
+          value={data.citizenshipStatus}
+          onChange={(e) => updateField('citizenshipStatus', e.target.value)}
           className={`w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ${
-            errors.citizenship_status ? 'border-red-500' : ''
+            errors.citizenshipStatus ? 'border-red-500' : ''
           }`}
         >
           <option value="">Select...</option>
@@ -141,8 +141,8 @@ export function BorrowerInfoSection({ data, onChange, errors }: BorrowerInfoSect
           <option value="Permanent Resident">Permanent Resident</option>
           <option value="Non-Permanent Resident">Non-Permanent Resident</option>
         </select>
-        {errors.citizenship_status && (
-          <p className="text-xs text-red-500 mt-1">{errors.citizenship_status}</p>
+        {errors.citizenshipStatus && (
+          <p className="text-xs text-red-500 mt-1">{errors.citizenshipStatus}</p>
         )}
       </div>
 

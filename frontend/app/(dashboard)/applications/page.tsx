@@ -31,10 +31,10 @@ export default function ApplicationsPage() {
           {applications.map((app) => (
             <Card key={app.id}>
               <CardHeader>
-                <CardTitle>{app.loan_type} - {app.loan_purpose}</CardTitle>
+                <CardTitle>{app.loanType} - {app.loanPurpose}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p>Loan Amount: ${app.loan_amount?.toLocaleString()}</p>
+                <p>Loan Amount: ${app.loanAmount?.toLocaleString()}</p>
                 <p>Status: {app.status}</p>
               </CardContent>
             </Card>

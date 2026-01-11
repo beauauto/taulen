@@ -19,10 +19,10 @@ export function LiabilitiesSection({ data, onChange, errors }: LiabilitiesSectio
 
   function createEmptyLiability(): LiabilityInfo {
     return {
-      liability_type: '',
-      creditor_name: '',
-      monthly_payment: 0,
-      outstanding_balance: 0,
+      liabilityType: '',
+      creditorName: '',
+      monthlyPayment: 0,
+      outstandingBalance: 0,
     }
   }
 
@@ -46,11 +46,11 @@ export function LiabilitiesSection({ data, onChange, errors }: LiabilitiesSectio
   }
 
   const totalMonthlyPayments = liabilities.reduce(
-    (sum, liability) => sum + (liability.monthly_payment || 0),
+    (sum, liability) => sum + (liability.monthlyPayment || 0),
     0
   )
   const totalOutstanding = liabilities.reduce(
-    (sum, liability) => sum + (liability.outstanding_balance || 0),
+    (sum, liability) => sum + (liability.outstandingBalance || 0),
     0
   )
 
@@ -79,8 +79,8 @@ export function LiabilitiesSection({ data, onChange, errors }: LiabilitiesSectio
           <div>
             <label className="block text-sm font-medium mb-1">Liability Type *</label>
             <select
-              value={liability.liability_type}
-              onChange={(e) => updateLiability(index, 'liability_type', e.target.value)}
+              value={liability.liabilityType}
+              onChange={(e) => updateLiability(index, 'liabilityType', e.target.value)}
               className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
             >
               <option value="">Select...</option>
@@ -98,8 +98,8 @@ export function LiabilitiesSection({ data, onChange, errors }: LiabilitiesSectio
           <div>
             <label className="block text-sm font-medium mb-1">Creditor Name *</label>
             <Input
-              value={liability.creditor_name}
-              onChange={(e) => updateLiability(index, 'creditor_name', e.target.value)}
+              value={liability.creditorName}
+              onChange={(e) => updateLiability(index, 'creditorName', e.target.value)}
               placeholder="Bank of America"
             />
           </div>
@@ -108,8 +108,8 @@ export function LiabilitiesSection({ data, onChange, errors }: LiabilitiesSectio
             <label className="block text-sm font-medium mb-1">Monthly Payment *</label>
             <Input
               type="number"
-              value={liability.monthly_payment || ''}
-              onChange={(e) => updateLiability(index, 'monthly_payment', parseFloat(e.target.value) || 0)}
+              value={liability.monthlyPayment || ''}
+              onChange={(e) => updateLiability(index, 'monthlyPayment', parseFloat(e.target.value) || 0)}
               placeholder="500"
             />
           </div>
@@ -118,8 +118,8 @@ export function LiabilitiesSection({ data, onChange, errors }: LiabilitiesSectio
             <label className="block text-sm font-medium mb-1">Outstanding Balance *</label>
             <Input
               type="number"
-              value={liability.outstanding_balance || ''}
-              onChange={(e) => updateLiability(index, 'outstanding_balance', parseFloat(e.target.value) || 0)}
+              value={liability.outstandingBalance || ''}
+              onChange={(e) => updateLiability(index, 'outstandingBalance', parseFloat(e.target.value) || 0)}
               placeholder="10000"
             />
           </div>
@@ -128,8 +128,8 @@ export function LiabilitiesSection({ data, onChange, errors }: LiabilitiesSectio
             <label className="block text-sm font-medium mb-1">Remaining Payments</label>
             <Input
               type="number"
-              value={liability.remaining_payments || ''}
-              onChange={(e) => updateLiability(index, 'remaining_payments', e.target.value ? parseInt(e.target.value) : undefined)}
+              value={liability.remainingPayments || ''}
+              onChange={(e) => updateLiability(index, 'remainingPayments', e.target.value ? parseInt(e.target.value) : undefined)}
               placeholder="24"
             />
           </div>

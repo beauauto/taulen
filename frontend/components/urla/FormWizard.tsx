@@ -34,13 +34,13 @@ export function FormWizard({ applicationId, initialData }: FormWizardProps) {
   const [currentStep, setCurrentStep] = useState(0)
   const [formData, setFormData] = useState<URLAFormData>({
     borrower: {
-      first_name: user?.first_name || '',
-      last_name: user?.last_name || '',
+      firstName: user?.firstName || '',
+      lastName: user?.lastName || '',
       ssn: '',
-      date_of_birth: '',
-      marital_status: '',
-      dependents_count: 0,
-      citizenship_status: '',
+      dateOfBirth: '',
+      maritalStatus: '',
+      dependentsCount: 0,
+      citizenshipStatus: '',
       email: user?.email || '',
     },
     ...initialData,
@@ -76,7 +76,7 @@ export function FormWizard({ applicationId, initialData }: FormWizardProps) {
     setFormData((prev) => ({
       ...prev,
       [section]: data,
-      current_section: section,
+      currentSection: section,
     }))
     setErrors({})
   }
@@ -87,18 +87,18 @@ export function FormWizard({ applicationId, initialData }: FormWizardProps) {
 
     switch (section) {
       case 'borrower':
-        if (!formData.borrower.first_name) newErrors.first_name = 'First name is required'
-        if (!formData.borrower.last_name) newErrors.last_name = 'Last name is required'
-        if (!formData.borrower.date_of_birth) newErrors.date_of_birth = 'Date of birth is required'
+        if (!formData.borrower.firstName) newErrors.firstName = 'First name is required'
+        if (!formData.borrower.lastName) newErrors.lastName = 'Last name is required'
+        if (!formData.borrower.dateOfBirth) newErrors.dateOfBirth = 'Date of birth is required'
         if (!formData.borrower.ssn) newErrors.ssn = 'SSN is required'
-        if (!formData.borrower.marital_status) newErrors.marital_status = 'Marital status is required'
-        if (!formData.borrower.citizenship_status) newErrors.citizenship_status = 'Citizenship status is required'
+        if (!formData.borrower.maritalStatus) newErrors.maritalStatus = 'Marital status is required'
+        if (!formData.borrower.citizenshipStatus) newErrors.citizenshipStatus = 'Citizenship status is required'
         break
       case 'property':
-        if (!formData.property?.street_address) newErrors.street_address = 'Street address is required'
+        if (!formData.property?.streetAddress) newErrors.streetAddress = 'Street address is required'
         if (!formData.property?.city) newErrors.city = 'City is required'
         if (!formData.property?.state) newErrors.state = 'State is required'
-        if (!formData.property?.zip_code) newErrors.zip_code = 'ZIP code is required'
+        if (!formData.property?.zipCode) newErrors.zipCode = 'ZIP code is required'
         break
       // Add more validation as needed
     }

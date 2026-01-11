@@ -19,9 +19,9 @@ export function AssetsSection({ data, onChange, errors }: AssetsSectionProps) {
 
   function createEmptyAsset(): AssetInfo {
     return {
-      asset_type: '',
+      assetType: '',
       description: '',
-      current_value: 0,
+      currentValue: 0,
     }
   }
 
@@ -44,7 +44,7 @@ export function AssetsSection({ data, onChange, errors }: AssetsSectionProps) {
     onChange(updated)
   }
 
-  const totalAssets = assets.reduce((sum, asset) => sum + (asset.current_value || 0), 0)
+  const totalAssets = assets.reduce((sum, asset) => sum + (asset.currentValue || 0), 0)
 
   return (
     <div className="space-y-4">
@@ -71,8 +71,8 @@ export function AssetsSection({ data, onChange, errors }: AssetsSectionProps) {
           <div>
             <label className="block text-sm font-medium mb-1">Asset Type *</label>
             <select
-              value={asset.asset_type}
-              onChange={(e) => updateAsset(index, 'asset_type', e.target.value)}
+              value={asset.assetType}
+              onChange={(e) => updateAsset(index, 'assetType', e.target.value)}
               className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
             >
               <option value="">Select...</option>
@@ -99,8 +99,8 @@ export function AssetsSection({ data, onChange, errors }: AssetsSectionProps) {
             <label className="block text-sm font-medium mb-1">Current Value *</label>
             <Input
               type="number"
-              value={asset.current_value || ''}
-              onChange={(e) => updateAsset(index, 'current_value', parseFloat(e.target.value) || 0)}
+              value={asset.currentValue || ''}
+              onChange={(e) => updateAsset(index, 'currentValue', parseFloat(e.target.value) || 0)}
               placeholder="10000"
             />
           </div>
@@ -109,8 +109,8 @@ export function AssetsSection({ data, onChange, errors }: AssetsSectionProps) {
             <label className="block text-sm font-medium mb-1">Account Last 4 Digits</label>
             <Input
               type="text"
-              value={asset.account_last_four || ''}
-              onChange={(e) => updateAsset(index, 'account_last_four', e.target.value.replace(/\D/g, '').slice(0, 4))}
+              value={asset.accountLastFour || ''}
+              onChange={(e) => updateAsset(index, 'accountLastFour', e.target.value.replace(/\D/g, '').slice(0, 4))}
               placeholder="1234"
               maxLength={4}
             />

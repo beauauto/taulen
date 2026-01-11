@@ -11,12 +11,12 @@ interface PropertyInfoSectionProps {
 
 export function PropertyInfoSection({ data, onChange, errors }: PropertyInfoSectionProps) {
   const formData = data || {
-    street_address: '',
+    streetAddress: '',
     city: '',
     state: '',
-    zip_code: '',
-    property_type: '',
-    property_usage: '',
+    zipCode: '',
+    propertyType: '',
+    propertyUsage: '',
   }
 
   const updateField = (field: keyof PropertyInfo, value: any) => {
@@ -28,21 +28,21 @@ export function PropertyInfoSection({ data, onChange, errors }: PropertyInfoSect
       <div>
         <label className="block text-sm font-medium mb-1">Street Address *</label>
         <Input
-          value={formData.street_address}
-          onChange={(e) => updateField('street_address', e.target.value)}
+          value={formData.streetAddress}
+          onChange={(e) => updateField('streetAddress', e.target.value)}
           placeholder="123 Main St"
-          className={errors.street_address ? 'border-red-500' : ''}
+          className={errors.streetAddress ? 'border-red-500' : ''}
         />
-        {errors.street_address && (
-          <p className="text-xs text-red-500 mt-1">{errors.street_address}</p>
+        {errors.streetAddress && (
+          <p className="text-xs text-red-500 mt-1">{errors.streetAddress}</p>
         )}
       </div>
 
       <div>
         <label className="block text-sm font-medium mb-1">Unit Number</label>
         <Input
-          value={formData.unit_number || ''}
-          onChange={(e) => updateField('unit_number', e.target.value)}
+          value={formData.unitNumber || ''}
+          onChange={(e) => updateField('unitNumber', e.target.value)}
           placeholder="Apt 4B"
         />
       </div>
@@ -79,21 +79,21 @@ export function PropertyInfoSection({ data, onChange, errors }: PropertyInfoSect
       <div>
         <label className="block text-sm font-medium mb-1">ZIP Code *</label>
         <Input
-          value={formData.zip_code}
-          onChange={(e) => updateField('zip_code', e.target.value.replace(/\D/g, '').slice(0, 10))}
+          value={formData.zipCode}
+          onChange={(e) => updateField('zipCode', e.target.value.replace(/\D/g, '').slice(0, 10))}
           placeholder="10001"
-          className={errors.zip_code ? 'border-red-500' : ''}
+          className={errors.zipCode ? 'border-red-500' : ''}
         />
-        {errors.zip_code && (
-          <p className="text-xs text-red-500 mt-1">{errors.zip_code}</p>
+        {errors.zipCode && (
+          <p className="text-xs text-red-500 mt-1">{errors.zipCode}</p>
         )}
       </div>
 
       <div>
         <label className="block text-sm font-medium mb-1">Property Type *</label>
         <select
-          value={formData.property_type}
-          onChange={(e) => updateField('property_type', e.target.value)}
+          value={formData.propertyType}
+          onChange={(e) => updateField('propertyType', e.target.value)}
           className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
         >
           <option value="">Select...</option>
@@ -108,8 +108,8 @@ export function PropertyInfoSection({ data, onChange, errors }: PropertyInfoSect
       <div>
         <label className="block text-sm font-medium mb-1">Property Usage *</label>
         <select
-          value={formData.property_usage}
-          onChange={(e) => updateField('property_usage', e.target.value)}
+          value={formData.propertyUsage}
+          onChange={(e) => updateField('propertyUsage', e.target.value)}
           className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
         >
           <option value="">Select...</option>
@@ -123,8 +123,8 @@ export function PropertyInfoSection({ data, onChange, errors }: PropertyInfoSect
         <label className="block text-sm font-medium mb-1">Year Built</label>
         <Input
           type="number"
-          value={formData.year_built || ''}
-          onChange={(e) => updateField('year_built', e.target.value ? parseInt(e.target.value) : undefined)}
+          value={formData.yearBuilt || ''}
+          onChange={(e) => updateField('yearBuilt', e.target.value ? parseInt(e.target.value) : undefined)}
           placeholder="2000"
         />
       </div>
@@ -133,8 +133,8 @@ export function PropertyInfoSection({ data, onChange, errors }: PropertyInfoSect
         <label className="block text-sm font-medium mb-1">Purchase Price</label>
         <Input
           type="number"
-          value={formData.purchase_price || ''}
-          onChange={(e) => updateField('purchase_price', e.target.value ? parseFloat(e.target.value) : undefined)}
+          value={formData.purchasePrice || ''}
+          onChange={(e) => updateField('purchasePrice', e.target.value ? parseFloat(e.target.value) : undefined)}
           placeholder="500000"
         />
       </div>

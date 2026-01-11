@@ -17,11 +17,8 @@ function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
-    // Redirect if already authenticated
-    if (isAuthenticated) {
-      const redirect = searchParams.get('redirect') || '/dashboard'
-      router.push(redirect)
-    }
+    // Redirect if already authenticated - handled in login function based on userType
+    // This effect is kept for cases where user is already logged in
   }, [isAuthenticated, router, searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -29,14 +26,28 @@ function LoginForm() {
     setError('')
     setIsLoading(true)
 
-    const result = await login(email, password)
-    setIsLoading(false)
-
-    if (result.success) {
-      const redirect = searchParams.get('redirect') || '/dashboard'
-      router.push(redirect)
-    } else {
-      setError(result.error || 'Login failed')
+    try {
+      const result = await login(email, password)
+      
+      if (!result.success) {
+        // Login failed - show error and stop loading
+        setIsLoading(false)
+        setError(result.error || 'Login failed. Please check your email and password.')
+        console.error('Login failed:', result.error)
+        // Don't redirect - stay on login page to show error
+        return
+      }
+      
+      // Login successful - redirect is handled in login function
+      // Keep loading state until redirect happens
+    } catch (err: any) {
+      setIsLoading(false)
+      const errorMessage = err?.response?.data?.error || 
+                          err?.response?.data?.message || 
+                          err?.message || 
+                          'An unexpected error occurred. Please try again.'
+      setError(errorMessage)
+      console.error('Login error:', err)
     }
   }
 
@@ -52,8 +63,16 @@ function LoginForm() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-                {error}
+              <div className="bg-red-50 border-2 border-red-300 text-red-800 px-4 py-3 rounded-md shadow-sm">
+                <div className="flex items-start">
+                  <svg className="w-5 h-5 text-red-600 mt-0.5 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                  <div className="flex-1">
+                    <p className="font-medium">Login Failed</p>
+                    <p className="text-sm mt-1">{error}</p>
+                  </div>
+                </div>
               </div>
             )}
             

@@ -1,16 +1,16 @@
 import { User } from './user'
 
 export interface AuthResponse {
-  access_token: string
-  refresh_token: string
+  accessToken: string
+  refreshToken: string
   user: User
 }
 
 export interface RegisterRequest {
   email: string
   password: string
-  first_name: string
-  last_name: string
+  firstName: string
+  lastName: string
 }
 
 export interface LoginRequest {

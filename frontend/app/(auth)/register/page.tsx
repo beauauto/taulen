@@ -1,14 +1,47 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
-export default function RegisterPage() {
+// Helper to pre-fill form from URL or localStorage
+function usePreFillForm(
+  searchParams: URLSearchParams,
+  setFirstName: (v: string) => void,
+  setLastName: (v: string) => void,
+  setEmail: (v: string) => void
+) {
+  useEffect(() => {
+    // Check URL params first
+    const urlFirstName = searchParams.get('firstName')
+    const urlLastName = searchParams.get('lastName')
+    const urlEmail = searchParams.get('email')
+    
+    if (urlFirstName) setFirstName(urlFirstName)
+    if (urlLastName) setLastName(urlLastName)
+    if (urlEmail) setEmail(urlEmail)
+    
+    // Also check localStorage for pre-application data
+    try {
+      const preAppData = localStorage.getItem('preApplicationData')
+      if (preAppData) {
+        const data = JSON.parse(preAppData)
+        if (data.firstName && !urlFirstName) setFirstName(data.firstName)
+        if (data.lastName && !urlLastName) setLastName(data.lastName)
+        if (data.email && !urlEmail) setEmail(data.email)
+      }
+    } catch (e) {
+      // Ignore errors
+    }
+  }, [searchParams, setFirstName, setLastName, setEmail])
+}
+
+function RegisterForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { register, isAuthenticated } = useAuth()
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -17,6 +50,9 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+
+  // Pre-fill from URL parameters or localStorage
+  usePreFillForm(searchParams, setFirstName, setLastName, setEmail)
 
   useEffect(() => {
     // Redirect if already authenticated
@@ -47,7 +83,13 @@ export default function RegisterPage() {
     setIsLoading(false)
 
     if (result.success) {
-      router.push('/dashboard')
+      // Check for redirect parameter
+      const redirect = searchParams.get('redirect')
+      if (redirect) {
+        router.push(redirect)
+      } else {
+        router.push('/dashboard/applicant')
+      }
     } else {
       setError(result.error || 'Registration failed')
     }
@@ -57,9 +99,9 @@ export default function RegisterPage() {
     <div className="flex min-h-screen items-center justify-center bg-gray-50">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-2xl text-center">Create an account</CardTitle>
+          <CardTitle className="text-2xl text-center">Create an Account</CardTitle>
           <CardDescription className="text-center">
-            Enter your information to get started with Taulen
+            Sign up to start your mortgage application
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -161,5 +203,17 @@ export default function RegisterPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-gray-500">Loading...</div>
+      </div>
+    }>
+      <RegisterForm />
+    </Suspense>
   )
 }

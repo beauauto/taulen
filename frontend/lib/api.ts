@@ -28,8 +28,12 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Handle unauthorized - clear token and redirect to login
-      if (typeof window !== 'undefined') {
+      // Don't redirect on auth endpoints (login/register) - let them handle their own errors
+      const isAuthEndpoint = error.config?.url?.includes('/auth/login') || 
+                            error.config?.url?.includes('/auth/register')
+      
+      if (!isAuthEndpoint && typeof window !== 'undefined') {
+        // Handle unauthorized for protected endpoints - clear token and redirect to login
         localStorage.removeItem('token')
         localStorage.removeItem('refreshToken')
         localStorage.removeItem('user')
@@ -49,17 +53,18 @@ export default apiClient
 export const authApi = {
   login: (email: string, password: string) =>
     apiClient.post('/auth/login', { email, password }),
-  register: (data: { email: string; password: string; first_name: string; last_name: string }) =>
+  register: (data: { email: string; password: string; firstName: string; lastName: string }) =>
     apiClient.post('/auth/register', data),
   refresh: (refreshToken: string) =>
-    apiClient.post('/auth/refresh', { refresh_token: refreshToken }),
+    apiClient.post('/auth/refresh', { refreshToken }),
   logout: () => apiClient.post('/auth/logout'),
   getMe: () => apiClient.get('/auth/me'),
 }
 
 export const urlaApi = {
-  createApplication: (data: { loan_type: string; loan_purpose: string; loan_amount: number }) =>
+  createApplication: (data: { loanType: string; loanPurpose: string; loanAmount: number }) =>
     apiClient.post('/urla/applications', data),
+  getMyApplications: () => apiClient.get('/urla/applications'),
   getApplication: (id: number) => apiClient.get(`/urla/applications/${id}`),
   updateApplicationStatus: (id: number, status: string) =>
     apiClient.put(`/urla/applications/${id}/status`, { status }),

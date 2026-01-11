@@ -1,46 +1,46 @@
 export interface URLAApplication {
   id: number
-  loan_type: string
-  loan_purpose: string
-  loan_amount: number
+  loanType: string
+  loanPurpose: string
+  loanAmount: number
   status: 'draft' | 'submitted' | 'in_review' | 'approved' | 'denied'
-  created_date?: string
-  last_updated_date?: string
+  createdDate?: string
+  lastUpdatedDate?: string
 }
 
 export interface BorrowerInfo {
-  first_name: string
-  middle_name?: string
-  last_name: string
+  firstName: string
+  middleName?: string
+  lastName: string
   suffix?: string
   ssn: string
-  date_of_birth: string
-  marital_status: string
-  dependents_count: number
-  citizenship_status: string
+  dateOfBirth: string
+  maritalStatus: string
+  dependentsCount: number
+  citizenshipStatus: string
   email?: string
   phone?: string
 }
 
 export interface PropertyInfo {
-  street_address: string
-  unit_number?: string
+  streetAddress: string
+  unitNumber?: string
   city: string
   state: string
-  zip_code: string
-  property_type: string
-  property_usage: string
-  year_built?: number
-  purchase_price?: number
+  zipCode: string
+  propertyType: string
+  propertyUsage: string
+  yearBuilt?: number
+  purchasePrice?: number
 }
 
 export interface EmploymentInfo {
-  employer_name: string
+  employerName: string
   position: string
-  employment_type: string
-  start_date: string
-  end_date?: string
-  monthly_income: number
+  employmentType: string
+  startDate: string
+  endDate?: string
+  monthlyIncome: number
   address?: {
     street: string
     city: string
@@ -50,37 +50,37 @@ export interface EmploymentInfo {
 }
 
 export interface IncomeInfo {
-  base_income: number
+  baseIncome: number
   overtime?: number
   bonuses?: number
   commissions?: number
-  other_income?: number
-  other_income_description?: string
+  otherIncome?: number
+  otherIncomeDescription?: string
 }
 
 export interface AssetInfo {
-  asset_type: string
+  assetType: string
   description: string
-  current_value: number
-  account_last_four?: string
+  currentValue: number
+  accountLastFour?: string
 }
 
 export interface LiabilityInfo {
-  liability_type: string
-  creditor_name: string
-  monthly_payment: number
-  outstanding_balance: number
-  remaining_payments?: number
+  liabilityType: string
+  creditorName: string
+  monthlyPayment: number
+  outstandingBalance: number
+  remainingPayments?: number
 }
 
 export interface URLAFormData {
-  application_id?: number
+  applicationId?: number
   borrower: BorrowerInfo
   property?: PropertyInfo
   employment?: EmploymentInfo[]
   income?: IncomeInfo
   assets?: AssetInfo[]
   liabilities?: LiabilityInfo[]
-  current_section?: string
-  completion_percentage?: number
+  currentSection?: string
+  completionPercentage?: number
 }

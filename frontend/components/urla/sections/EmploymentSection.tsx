@@ -19,11 +19,11 @@ export function EmploymentSection({ data, onChange, errors }: EmploymentSectionP
 
   function createEmptyEmployment(): EmploymentInfo {
     return {
-      employer_name: '',
+      employerName: '',
       position: '',
-      employment_type: '',
-      start_date: '',
-      monthly_income: 0,
+      employmentType: '',
+      startDate: '',
+      monthlyIncome: 0,
     }
   }
 
@@ -71,8 +71,8 @@ export function EmploymentSection({ data, onChange, errors }: EmploymentSectionP
           <div>
             <label className="block text-sm font-medium mb-1">Employer Name *</label>
             <Input
-              value={employment.employer_name}
-              onChange={(e) => updateEmployment(index, 'employer_name', e.target.value)}
+              value={employment.employerName}
+              onChange={(e) => updateEmployment(index, 'employerName', e.target.value)}
               placeholder="ABC Company"
             />
           </div>
@@ -89,8 +89,8 @@ export function EmploymentSection({ data, onChange, errors }: EmploymentSectionP
           <div>
             <label className="block text-sm font-medium mb-1">Employment Type</label>
             <select
-              value={employment.employment_type}
-              onChange={(e) => updateEmployment(index, 'employment_type', e.target.value)}
+              value={employment.employmentType}
+              onChange={(e) => updateEmployment(index, 'employmentType', e.target.value)}
               className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
             >
               <option value="">Select...</option>
@@ -105,8 +105,8 @@ export function EmploymentSection({ data, onChange, errors }: EmploymentSectionP
               <label className="block text-sm font-medium mb-1">Start Date *</label>
               <Input
                 type="date"
-                value={employment.start_date}
-                onChange={(e) => updateEmployment(index, 'start_date', e.target.value)}
+                value={employment.startDate}
+                onChange={(e) => updateEmployment(index, 'startDate', e.target.value)}
               />
             </div>
 
@@ -115,8 +115,8 @@ export function EmploymentSection({ data, onChange, errors }: EmploymentSectionP
                 <label className="block text-sm font-medium mb-1">End Date</label>
                 <Input
                   type="date"
-                  value={employment.end_date || ''}
-                  onChange={(e) => updateEmployment(index, 'end_date', e.target.value)}
+                  value={employment.endDate || ''}
+                  onChange={(e) => updateEmployment(index, 'endDate', e.target.value)}
                 />
               </div>
             )}
@@ -126,8 +126,8 @@ export function EmploymentSection({ data, onChange, errors }: EmploymentSectionP
             <label className="block text-sm font-medium mb-1">Monthly Income *</label>
             <Input
               type="number"
-              value={employment.monthly_income || ''}
-              onChange={(e) => updateEmployment(index, 'monthly_income', parseFloat(e.target.value) || 0)}
+              value={employment.monthlyIncome || ''}
+              onChange={(e) => updateEmployment(index, 'monthlyIncome', parseFloat(e.target.value) || 0)}
               placeholder="5000"
             />
           </div>

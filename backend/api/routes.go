@@ -49,6 +49,13 @@ func SetupRoutes(cfg *config.Config) *gin.Engine {
 		protected := v1.Group("")
 		protected.Use(middleware.AuthMiddleware(authService.GetJWTManager()))
 		{
+			// Admin routes
+			adminHandler := handlers.NewAdminHandler(authService)
+			admin := protected.Group("/admin")
+			{
+				admin.POST("/employees", adminHandler.CreateEmployee)
+			}
+
 			// URLA routes
 			urlaService := services.NewURLAService()
 			urlaHandler := handlers.NewURLAHandler(urlaService)
@@ -56,6 +63,7 @@ func SetupRoutes(cfg *config.Config) *gin.Engine {
 			urla := protected.Group("/urla")
 			{
 				urla.POST("/applications", urlaHandler.CreateApplication)
+				urla.GET("/applications", urlaHandler.GetMyApplications)
 				urla.GET("/applications/:id", urlaHandler.GetApplication)
 				urla.PUT("/applications/:id/status", urlaHandler.UpdateApplicationStatus)
 				urla.POST("/applications/:id/save", urlaHandler.SaveApplication)

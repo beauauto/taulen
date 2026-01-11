@@ -52,7 +52,7 @@ export default function DashboardLayout({
               {user && (
                 <div className="px-4 py-2 mb-4">
                   <p className="text-sm font-medium text-gray-900">
-                    {user.first_name} {user.last_name}
+                    {user.firstName} {user.lastName}
                   </p>
                   <p className="text-xs text-gray-500">{user.email}</p>
                 </div>

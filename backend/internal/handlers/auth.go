@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"taulen/backend/internal/services"
@@ -30,10 +31,17 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	response, err := h.authService.Register(req)
 	if err != nil {
 		statusCode := http.StatusInternalServerError
-		if err.Error() == "user with this email already exists" {
+		errorMsg := err.Error()
+		
+		// Check for various "already exists" error messages
+		if strings.Contains(errorMsg, "already exists") || 
+		   strings.Contains(errorMsg, "already registered") ||
+		   strings.Contains(errorMsg, "duplicate key") ||
+		   strings.Contains(errorMsg, "unique constraint") {
 			statusCode = http.StatusConflict
 		}
-		c.JSON(statusCode, gin.H{"error": err.Error()})
+		
+		c.JSON(statusCode, gin.H{"error": errorMsg})
 		return
 	}
 

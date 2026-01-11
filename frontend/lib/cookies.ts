@@ -3,7 +3,9 @@ export const cookieUtils = {
     if (typeof window === 'undefined') return
     const expires = new Date()
     expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000)
-    document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`
+    // Add SameSite=None; Secure for cross-site requests if needed
+    // For now, use Lax which works for same-site requests
+    document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/;SameSite=Lax`
   },
 
   getCookie: (name: string): string | null => {

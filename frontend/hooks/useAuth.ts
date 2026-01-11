@@ -26,26 +26,85 @@ export function useAuth() {
 
   const login = async (email: string, password: string) => {
     try {
+      console.log('Attempting login for:', email)
       const response = await authApi.login(email, password)
-      const { access_token, refresh_token, user: userData } = response.data
+      console.log('Login response:', response)
+      
+      // Check if response.data exists
+      if (!response.data) {
+        console.error('No data in response:', response)
+        return {
+          success: false,
+          error: 'Invalid response from server',
+        }
+      }
+      
+      const { accessToken, refreshToken, user: userData } = response.data
+      
+      if (!accessToken || !userData) {
+        console.error('Missing accessToken or userData:', { accessToken: !!accessToken, userData: !!userData })
+        return {
+          success: false,
+          error: 'Invalid response from server',
+        }
+      }
+      
+      console.log('Login successful, storing tokens and user data')
       
       // Store in localStorage
-      authUtils.setToken(access_token)
-      authUtils.setRefreshToken(refresh_token)
+      authUtils.setToken(accessToken)
+      authUtils.setRefreshToken(refreshToken)
       authUtils.setUser(userData)
       
-      // Also store in cookies for middleware
-      cookieUtils.setCookie('token', access_token, 7)
-      cookieUtils.setCookie('refreshToken', refresh_token, 30)
+      // Also store in cookies for middleware (must be set before redirect)
+      cookieUtils.setCookie('token', accessToken, 7)
+      cookieUtils.setCookie('refreshToken', refreshToken, 30)
+      
+      // Verify cookie was set
+      const cookieCheck = cookieUtils.getCookie('token')
+      console.log('Cookie set check:', cookieCheck ? 'Success' : 'Failed')
       
       setUser(userData)
       setIsAuthenticated(true)
       
+      // Small delay to ensure cookies are set before redirect
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      // Redirect based on user type
+      const redirectPath = userData.userType === 'employee' 
+        ? '/dashboard/employee' 
+        : userData.userType === 'applicant'
+        ? '/dashboard/applicant'
+        : '/dashboard'
+      
+      console.log('Redirecting to:', redirectPath)
+      router.push(redirectPath)
+      
       return { success: true }
     } catch (error: any) {
+      console.error('Login error:', error)
+      console.error('Error response:', error.response)
+      
+      // Extract error message from response
+      let errorMessage = 'Login failed'
+      
+      if (error.response) {
+        // Server responded with an error
+        errorMessage = error.response.data?.error || 
+                      error.response.data?.message || 
+                      error.response.statusText || 
+                      'Login failed'
+      } else if (error.request) {
+        // Request was made but no response received
+        errorMessage = 'Unable to connect to server. Please check your connection.'
+      } else {
+        // Something else happened
+        errorMessage = error.message || 'An unexpected error occurred'
+      }
+      
       return {
         success: false,
-        error: error.response?.data?.error || error.response?.data?.message || 'Login failed',
+        error: errorMessage,
       }
     }
   }
@@ -65,19 +124,19 @@ export function useAuth() {
     }
   }
 
-  const register = async (email: string, password: string, first_name: string, last_name: string) => {
+  const register = async (email: string, password: string, firstName: string, lastName: string) => {
     try {
-      const response = await authApi.register({ email, password, first_name, last_name })
-      const { access_token, refresh_token, user: userData } = response.data
+      const response = await authApi.register({ email, password, firstName, lastName })
+      const { accessToken, refreshToken, user: userData } = response.data
       
       // Store in localStorage
-      authUtils.setToken(access_token)
-      authUtils.setRefreshToken(refresh_token)
+      authUtils.setToken(accessToken)
+      authUtils.setRefreshToken(refreshToken)
       authUtils.setUser(userData)
       
       // Also store in cookies for middleware
-      cookieUtils.setCookie('token', access_token, 7)
-      cookieUtils.setCookie('refreshToken', refresh_token, 30)
+      cookieUtils.setCookie('token', accessToken, 7)
+      cookieUtils.setCookie('refreshToken', refreshToken, 30)
       
       setUser(userData)
       setIsAuthenticated(true)
