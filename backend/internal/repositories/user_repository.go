@@ -2,7 +2,7 @@ package repositories
 
 import (
 	"database/sql"
-	"errors"
+	"strconv"
 	"taulen/backend/internal/database"
 )
 
@@ -36,31 +36,39 @@ func NewUserRepository() *UserRepository {
 
 // GetByID retrieves a user by ID
 func (r *UserRepository) GetByID(id string) (*User, error) {
-	query := `SELECT user_id, email, password_hash, first_name, last_name, phone, role, user_type, status, mfa_enabled, created_at, updated_at 
-	          FROM users WHERE user_id = $1`
-	row := r.db.QueryRow(query, id)
+	// Convert string ID to int for the user table (id is SERIAL)
+	userIDInt, err := strconv.Atoi(id)
+	if err != nil {
+		return nil, err
+	}
+	query := `SELECT id, email_address, password_hash, first_name, last_name, phone, user_role, user_type, status, mfa_enabled, created_at, updated_at 
+	          FROM "user" WHERE id = $1`
+	row := r.db.QueryRow(query, userIDInt)
 
 	user := &User{}
-	err := row.Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.FirstName, &user.LastName,
+	var userIDInt64 int
+	err = row.Scan(
+		&userIDInt64, &user.Email, &user.PasswordHash, &user.FirstName, &user.LastName,
 		&user.Phone, &user.Role, &user.UserType, &user.Status, &user.MFAEnabled, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
+	user.ID = strconv.Itoa(userIDInt64)
 	return user, nil
 }
 
 // GetByEmail retrieves a user by email
 func (r *UserRepository) GetByEmail(email string) (*User, error) {
 	// Use LOWER() for case-insensitive comparison
-	query := `SELECT user_id, email, password_hash, first_name, last_name, phone, role, user_type, status, mfa_enabled, created_at, updated_at 
-	          FROM users WHERE LOWER(email) = LOWER($1)`
+	query := `SELECT id, email_address, password_hash, first_name, last_name, phone, user_role, user_type, status, mfa_enabled, created_at, updated_at 
+	          FROM "user" WHERE LOWER(email_address) = LOWER($1)`
 	row := r.db.QueryRow(query, email)
 
 	user := &User{}
+	var userIDInt int
 	err := row.Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.FirstName, &user.LastName,
+		&userIDInt, &user.Email, &user.PasswordHash, &user.FirstName, &user.LastName,
 		&user.Phone, &user.Role, &user.UserType, &user.Status, &user.MFAEnabled, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
@@ -69,35 +77,41 @@ func (r *UserRepository) GetByEmail(email string) (*User, error) {
 		}
 		return nil, err
 	}
+	user.ID = strconv.Itoa(userIDInt)
 	return user, nil
 }
 
 // Create creates a new user (employee only)
-// role must be one of: loan_officer, underwriter, processor, admin
+// role must be one of: LoanOfficer, Underwriter, Processor, Admin
 func (r *UserRepository) Create(email, passwordHash, firstName, lastName, role string) (*User, error) {
 	// Validate role is an employee role (not borrower)
-	validRoles := map[string]bool{
-		"loan_officer": true,
-		"underwriter":  true,
-		"processor":    true,
-		"admin":        true,
+	// Map common role names to schema format
+	roleMap := map[string]string{
+		"loan_officer": "LoanOfficer",
+		"underwriter":  "Underwriter",
+		"processor":     "Processor",
+		"admin":         "Admin",
 	}
-	if !validRoles[role] {
-		return nil, errors.New("invalid role: must be loan_officer, underwriter, processor, or admin")
+	mappedRole, ok := roleMap[role]
+	if !ok {
+		// If already in correct format, use as-is
+		mappedRole = role
 	}
 
-	query := `INSERT INTO users (email, password_hash, first_name, last_name, role, user_type) 
+	query := `INSERT INTO "user" (email_address, password_hash, first_name, last_name, user_role, user_type) 
 	          VALUES ($1, $2, $3, $4, $5, 'employee') 
-	          RETURNING user_id, email, password_hash, first_name, last_name, phone, role, user_type, status, mfa_enabled, created_at, updated_at`
-	row := r.db.QueryRow(query, email, passwordHash, firstName, lastName, role)
+	          RETURNING id, email_address, password_hash, first_name, last_name, phone, user_role, user_type, status, mfa_enabled, created_at, updated_at`
+	row := r.db.QueryRow(query, email, passwordHash, firstName, lastName, mappedRole)
 
 	user := &User{}
+	var userIDInt int
 	err := row.Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.FirstName, &user.LastName,
+		&userIDInt, &user.Email, &user.PasswordHash, &user.FirstName, &user.LastName,
 		&user.Phone, &user.Role, &user.UserType, &user.Status, &user.MFAEnabled, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
+	user.ID = strconv.Itoa(userIDInt)
 	return user, nil
 }

@@ -8,17 +8,17 @@ import (
 
 // URLAService handles URLA application business logic
 type URLAService struct {
-	urlaRepo      *repositories.URLAApplicationRepository
-	userRepo      *repositories.UserRepository
-	applicantRepo *repositories.ApplicantRepository
+	urlaRepo     *repositories.URLAApplicationRepository
+	userRepo     *repositories.UserRepository
+	borrowerRepo *repositories.BorrowerRepository
 }
 
 // NewURLAService creates a new URLA service
 func NewURLAService() *URLAService {
 	return &URLAService{
-		urlaRepo:      repositories.NewURLAApplicationRepository(),
-		userRepo:      repositories.NewUserRepository(),
-		applicantRepo: repositories.NewApplicantRepository(),
+		urlaRepo:     repositories.NewURLAApplicationRepository(),
+		userRepo:     repositories.NewUserRepository(),
+		borrowerRepo: repositories.NewBorrowerRepository(),
 	}
 }
 
@@ -203,9 +203,9 @@ func (s *URLAService) GetApplicationsByEmployee(userID string) ([]ApplicationRes
 	return applications, rows.Err()
 }
 
-// GetApplicationsByApplicant retrieves all applications for an applicant
-func (s *URLAService) GetApplicationsByApplicant(applicantID int64) ([]ApplicationResponse, error) {
-	rows, err := s.urlaRepo.GetApplicationsByApplicantID(applicantID)
+// GetApplicationsByBorrower retrieves all applications for a borrower
+func (s *URLAService) GetApplicationsByBorrower(borrowerID int64) ([]ApplicationResponse, error) {
+	rows, err := s.urlaRepo.GetApplicationsByBorrowerID(borrowerID)
 	if err != nil {
 		return nil, errors.New("failed to retrieve applications")
 	}
@@ -274,32 +274,25 @@ func (s *URLAService) GetApplicationsByApplicant(applicantID int64) ([]Applicati
 	return applications, rows.Err()
 }
 
-// CreateApplicationForApplicant creates a new application for an applicant
-// This is called when an applicant starts a new application from the home page
-func (s *URLAService) CreateApplicationForApplicant(applicantID int64, req CreateApplicationRequest) (*ApplicationResponse, error) {
-	// Verify applicant exists
-	applicant, err := s.applicantRepo.GetByID(applicantID)
+// CreateApplicationForBorrower creates a new application for a borrower
+// This is called when a borrower starts a new application from the home page
+func (s *URLAService) CreateApplicationForBorrower(borrowerID int64, req CreateApplicationRequest) (*ApplicationResponse, error) {
+	// Verify borrower exists
+	_, err := s.borrowerRepo.GetByID(borrowerID)
 	if err != nil {
-		return nil, errors.New("applicant not found")
-	}
-
-	// Get the UserID from applicant (employee managing this applicant)
-	userID := ""
-	if applicant.UserID.Valid {
-		userID = applicant.UserID.String
+		return nil, errors.New("borrower not found")
 	}
 
 	// Create application - UserID can be NULL if no employee assigned yet
-	appID, err := s.urlaRepo.CreateApplication(userID, &applicantID, req.LoanType, req.LoanPurpose, req.LoanAmount)
+	// Note: The new schema uses deal/loan instead of loan_application
+	// For now, we'll pass borrowerID to maintain compatibility
+	appID, err := s.urlaRepo.CreateApplication("", &borrowerID, req.LoanType, req.LoanPurpose, req.LoanAmount)
 	if err != nil {
 		return nil, errors.New("failed to create application")
 	}
 
-	// Update applicant's LoanApplicationID if it was NULL
-	if !applicant.LoanApplicationID.Valid {
-		// This would require an update method in ApplicantRepository
-		// For now, we'll handle it in the applicant creation flow
-	}
+	// Update borrower's deal_id if it was NULL
+	// This will be handled when the deal is created
 
 	return &ApplicationResponse{
 		ID:          appID,

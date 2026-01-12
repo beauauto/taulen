@@ -36,11 +36,11 @@ func (h *URLAHandler) CreateApplication(c *gin.Context) {
 		return
 	}
 
-	// Try to parse as applicant ID (int64), if fails, treat as employee (UUID)
-	applicantID, err := strconv.ParseInt(userID, 10, 64)
+	// Try to parse as borrower ID (int64), if fails, treat as employee (UUID)
+	borrowerID, err := strconv.ParseInt(userID, 10, 64)
 	if err == nil {
-		// It's an applicant ID
-		response, err := h.urlaService.CreateApplicationForApplicant(applicantID, req)
+		// It's a borrower ID
+		response, err := h.urlaService.CreateApplicationForBorrower(borrowerID, req)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -124,16 +124,16 @@ func (h *URLAHandler) GetMyApplications(c *gin.Context) {
 	}
 
 	// Get user type from context (we'll need to add this to middleware)
-	// For now, try employee first, then applicant
+	// For now, try employee first, then borrower
 	applications, err := h.urlaService.GetApplicationsByEmployee(userID)
 	if err != nil {
-		// Try as applicant
-		applicantID, parseErr := strconv.ParseInt(userID, 10, 64)
+		// Try as borrower
+		borrowerID, parseErr := strconv.ParseInt(userID, 10, 64)
 		if parseErr != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID"})
 			return
 		}
-		applications, err = h.urlaService.GetApplicationsByApplicant(applicantID)
+		applications, err = h.urlaService.GetApplicationsByBorrower(borrowerID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve applications"})
 			return

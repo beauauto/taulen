@@ -12,17 +12,17 @@ import (
 
 // AuthService handles authentication business logic
 type AuthService struct {
-	userRepo      *repositories.UserRepository
-	applicantRepo *repositories.ApplicantRepository
-	jwtManager    *utils.JWTManager
+	userRepo     *repositories.UserRepository
+	borrowerRepo *repositories.BorrowerRepository
+	jwtManager   *utils.JWTManager
 }
 
 // NewAuthService creates a new auth service
 func NewAuthService(cfg *config.Config) *AuthService {
 	return &AuthService{
-		userRepo:      repositories.NewUserRepository(),
-		applicantRepo: repositories.NewApplicantRepository(),
-		jwtManager:    utils.NewJWTManager(&cfg.JWT),
+		userRepo:     repositories.NewUserRepository(),
+		borrowerRepo: repositories.NewBorrowerRepository(),
+		jwtManager:   utils.NewJWTManager(&cfg.JWT),
 	}
 }
 
@@ -62,18 +62,18 @@ type UserResponse struct {
 	UserType  string `json:"userType"`            // 'employee' or 'applicant'
 }
 
-// Register registers a new applicant (signup is only for applicants)
-// IMPORTANT: This creates entries in the "Applicants" table, NOT the "Users" table.
-// The "Users" table is reserved for employees created by system admins via CreateEmployee.
+// Register registers a new borrower (signup is only for borrowers/applicants)
+// IMPORTANT: This creates entries in the "borrower" table, NOT the "user" table.
+// The "user" table is reserved for employees created by system admins via CreateEmployee.
 func (s *AuthService) Register(req RegisterRequest) (*AuthResponse, error) {
-	// Check if applicant already exists
-	existingApplicant, err := s.applicantRepo.GetByEmail(req.Email)
+	// Check if borrower already exists
+	existingBorrower, err := s.borrowerRepo.GetByEmail(req.Email)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		// Unexpected database error - log it for debugging
-		return nil, fmt.Errorf("failed to check if applicant exists: %w", err)
+		return nil, fmt.Errorf("failed to check if borrower exists: %w", err)
 	}
-	if existingApplicant != nil {
-		return nil, errors.New("applicant with this email already exists")
+	if existingBorrower != nil {
+		return nil, errors.New("borrower with this email already exists")
 	}
 
 	// Check if employee with this email exists
@@ -92,31 +92,31 @@ func (s *AuthService) Register(req RegisterRequest) (*AuthResponse, error) {
 		return nil, errors.New("failed to hash password")
 	}
 
-	// Create applicant in "Applicants" table (NOT "Users" table)
+	// Create borrower in "borrower" table (NOT "user" table)
 	// Employees are created separately by admins via CreateEmployee method
-	applicant, err := s.applicantRepo.Create(req.Email, passwordHash, req.FirstName, req.LastName)
+	borrower, err := s.borrowerRepo.Create(req.Email, passwordHash, req.FirstName, req.LastName)
 	if err != nil {
 		// Check if it's a unique constraint error that we already handle
-		if strings.Contains(err.Error(), "applicant with this email already exists") {
+		if strings.Contains(err.Error(), "borrower with this email already exists") {
 			return nil, err
 		}
 		// Return the actual error for debugging
-		return nil, fmt.Errorf("failed to create applicant: %w", err)
+		return nil, fmt.Errorf("failed to create borrower: %w", err)
 	}
 
-	// Generate tokens - use ApplicantID as string for ID
-	applicantIDStr := utils.Int64ToString(applicant.ApplicantID)
+	// Generate tokens - use Borrower ID as string for ID
+	borrowerIDStr := utils.Int64ToString(borrower.ID)
 	email := ""
-	if applicant.Email.Valid {
-		email = applicant.Email.String
+	if borrower.EmailAddress.Valid {
+		email = borrower.EmailAddress.String
 	}
 
-	accessToken, err := s.jwtManager.GenerateAccessToken(applicantIDStr, email)
+	accessToken, err := s.jwtManager.GenerateAccessToken(borrowerIDStr, email)
 	if err != nil {
 		return nil, errors.New("failed to generate access token")
 	}
 
-	refreshToken, err := s.jwtManager.GenerateRefreshToken(applicantIDStr, email)
+	refreshToken, err := s.jwtManager.GenerateRefreshToken(borrowerIDStr, email)
 	if err != nil {
 		return nil, errors.New("failed to generate refresh token")
 	}
@@ -125,10 +125,10 @@ func (s *AuthService) Register(req RegisterRequest) (*AuthResponse, error) {
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		User: UserResponse{
-			ID:        applicantIDStr,
+			ID:        borrowerIDStr,
 			Email:     email,
-			FirstName: applicant.FirstName,
-			LastName:  applicant.LastName,
+			FirstName: borrower.FirstName,
+			LastName:  borrower.LastName,
 			UserType:  "applicant",
 		},
 	}, nil
@@ -188,37 +188,37 @@ func (s *AuthService) Login(req LoginRequest) (*AuthResponse, error) {
 		return nil, errors.New("failed to check user account")
 	}
 
-	// Try applicant login
-	applicant, err := s.applicantRepo.GetByEmail(req.Email)
+	// Try borrower login
+	borrower, err := s.borrowerRepo.GetByEmail(req.Email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errors.New("invalid email or password")
 		}
-		return nil, errors.New("failed to check applicant account")
+		return nil, errors.New("failed to check borrower account")
 	}
 
 	// Verify password
-	if !applicant.PasswordHash.Valid {
+	if !borrower.PasswordHash.Valid {
 		return nil, errors.New("invalid email or password")
 	}
 
-	if !utils.CheckPasswordHash(req.Password, applicant.PasswordHash.String) {
+	if !utils.CheckPasswordHash(req.Password, borrower.PasswordHash.String) {
 		return nil, errors.New("invalid email or password")
 	}
 
 	// Generate tokens
-	applicantIDStr := utils.Int64ToString(applicant.ApplicantID)
+	borrowerIDStr := utils.Int64ToString(borrower.ID)
 	email := ""
-	if applicant.Email.Valid {
-		email = applicant.Email.String
+	if borrower.EmailAddress.Valid {
+		email = borrower.EmailAddress.String
 	}
 
-	accessToken, err := s.jwtManager.GenerateAccessToken(applicantIDStr, email)
+	accessToken, err := s.jwtManager.GenerateAccessToken(borrowerIDStr, email)
 	if err != nil {
 		return nil, errors.New("failed to generate access token")
 	}
 
-	refreshToken, err := s.jwtManager.GenerateRefreshToken(applicantIDStr, email)
+	refreshToken, err := s.jwtManager.GenerateRefreshToken(borrowerIDStr, email)
 	if err != nil {
 		return nil, errors.New("failed to generate refresh token")
 	}
@@ -227,10 +227,10 @@ func (s *AuthService) Login(req LoginRequest) (*AuthResponse, error) {
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		User: UserResponse{
-			ID:        applicantIDStr,
+			ID:        borrowerIDStr,
 			Email:     email,
-			FirstName: applicant.FirstName,
-			LastName:  applicant.LastName,
+			FirstName: borrower.FirstName,
+			LastName:  borrower.LastName,
 			UserType:  "applicant",
 		},
 	}, nil
@@ -282,30 +282,30 @@ func (s *AuthService) RefreshToken(req RefreshRequest) (*AuthResponse, error) {
 		}, nil
 	}
 
-	// Try applicant
-	applicantID, err := utils.StringToInt64(claims.UserID)
+	// Try borrower
+	borrowerID, err := utils.StringToInt64(claims.UserID)
 	if err != nil {
 		return nil, errors.New("invalid token")
 	}
 
-	applicant, err := s.applicantRepo.GetByID(applicantID)
+	borrower, err := s.borrowerRepo.GetByID(borrowerID)
 	if err != nil {
-		return nil, errors.New("applicant not found")
+		return nil, errors.New("borrower not found")
 	}
 
 	// Generate new tokens
-	applicantIDStr := utils.Int64ToString(applicant.ApplicantID)
+	borrowerIDStr := utils.Int64ToString(borrower.ID)
 	email := ""
-	if applicant.Email.Valid {
-		email = applicant.Email.String
+	if borrower.EmailAddress.Valid {
+		email = borrower.EmailAddress.String
 	}
 
-	accessToken, err := s.jwtManager.GenerateAccessToken(applicantIDStr, email)
+	accessToken, err := s.jwtManager.GenerateAccessToken(borrowerIDStr, email)
 	if err != nil {
 		return nil, errors.New("failed to generate access token")
 	}
 
-	refreshToken, err := s.jwtManager.GenerateRefreshToken(applicantIDStr, email)
+	refreshToken, err := s.jwtManager.GenerateRefreshToken(borrowerIDStr, email)
 	if err != nil {
 		return nil, errors.New("failed to generate refresh token")
 	}
@@ -314,10 +314,10 @@ func (s *AuthService) RefreshToken(req RefreshRequest) (*AuthResponse, error) {
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		User: UserResponse{
-			ID:        applicantIDStr,
+			ID:        borrowerIDStr,
 			Email:     email,
-			FirstName: applicant.FirstName,
-			LastName:  applicant.LastName,
+			FirstName: borrower.FirstName,
+			LastName:  borrower.LastName,
 			UserType:  "applicant",
 		},
 	}, nil
@@ -340,10 +340,10 @@ func (s *AuthService) CreateEmployee(req CreateEmployeeRequest) (*UserResponse, 
 		return nil, errors.New("employee with this email already exists")
 	}
 
-	// Check if applicant with this email exists
-	existingApplicant, _ := s.applicantRepo.GetByEmail(req.Email)
-	if existingApplicant != nil {
-		return nil, errors.New("email already registered as applicant")
+	// Check if borrower with this email exists
+	existingBorrower, _ := s.borrowerRepo.GetByEmail(req.Email)
+	if existingBorrower != nil {
+		return nil, errors.New("email already registered as borrower")
 	}
 
 	// Hash password

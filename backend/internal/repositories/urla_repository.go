@@ -22,14 +22,15 @@ func NewURLAApplicationRepository() *URLAApplicationRepository {
 
 // CreateApplication creates a new loan application
 // userID is the employee (User) managing this application
-// applicantID can be NULL initially, set later when primary applicant is created
-func (r *URLAApplicationRepository) CreateApplication(userID string, applicantID *int64, loanType, loanPurpose string, loanAmount float64) (int64, error) {
+// borrowerID can be NULL initially, set later when primary borrower is created
+// Note: This still uses loan_applications table - will need migration to deal/loan schema
+func (r *URLAApplicationRepository) CreateApplication(userID string, borrowerID *int64, loanType, loanPurpose string, loanAmount float64) (int64, error) {
 	query := `INSERT INTO loan_applications (
 		user_id, applicant_id, application_date, loan_type, loan_purpose, loan_amount_requested, application_status
 	) VALUES ($1, $2, CURRENT_DATE, $3, $4, $5, 'draft') RETURNING loan_application_id`
 	
 	var id int64
-	err := r.db.QueryRow(query, userID, applicantID, loanType, loanPurpose, loanAmount).Scan(&id)
+	err := r.db.QueryRow(query, userID, borrowerID, loanType, loanPurpose, loanAmount).Scan(&id)
 	return id, err
 }
 
@@ -63,8 +64,10 @@ func (r *URLAApplicationRepository) GetApplicationsByUserID(userID string) (*sql
 	return r.db.Query(query, userID)
 }
 
-// GetApplicationsByApplicantID retrieves all applications for an applicant (as primary or co-applicant)
-func (r *URLAApplicationRepository) GetApplicationsByApplicantID(applicantID int64) (*sql.Rows, error) {
+// GetApplicationsByBorrowerID retrieves all applications for a borrower
+// Note: This still uses loan_applications/applicants tables - will need migration to deal/borrower schema
+func (r *URLAApplicationRepository) GetApplicationsByBorrowerID(borrowerID int64) (*sql.Rows, error) {
+	// For now, using the old schema. Will need to update to use deal/borrower
 	query := `SELECT DISTINCT la.loan_application_id, la.applicant_id, la.user_id, la.application_date, 
 		la.loan_type, la.loan_purpose, la.loan_amount_requested, la.application_status, 
 		la.created_date, la.last_updated_date
@@ -72,5 +75,5 @@ func (r *URLAApplicationRepository) GetApplicationsByApplicantID(applicantID int
 		INNER JOIN applicants a ON a.loan_application_id = la.loan_application_id
 		WHERE a.applicant_id = $1
 		ORDER BY la.created_date DESC`
-	return r.db.Query(query, applicantID)
+	return r.db.Query(query, borrowerID)
 }
