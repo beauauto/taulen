@@ -111,8 +111,73 @@ func (h *URLAHandler) SaveApplication(c *gin.Context) {
 
 // GetApplicationProgress handles getting application completion progress
 func (h *URLAHandler) GetApplicationProgress(c *gin.Context) {
-	// TODO: Implement progress calculation
-	c.JSON(http.StatusOK, gin.H{"progress": 0})
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid application ID"})
+		return
+	}
+
+	progress, err := h.urlaService.GetDealProgress(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Progress not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, progress)
+}
+
+// UpdateApplicationProgressSection handles updating a section's completion status
+func (h *URLAHandler) UpdateApplicationProgressSection(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid application ID"})
+		return
+	}
+
+	var req struct {
+		Section  string `json:"section" binding:"required"`
+		Complete bool   `json:"complete"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	err = h.urlaService.UpdateDealProgressSection(id, req.Section, req.Complete)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Progress updated successfully"})
+}
+
+// UpdateApplicationProgressNotes handles updating progress notes
+func (h *URLAHandler) UpdateApplicationProgressNotes(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid application ID"})
+		return
+	}
+
+	var req struct {
+		Notes string `json:"notes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	err = h.urlaService.UpdateDealProgressNotes(id, req.Notes)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Notes updated successfully"})
 }
 
 // GetMyApplications handles getting applications for the current user (employee or applicant)

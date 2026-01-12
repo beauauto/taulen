@@ -1,37 +1,32 @@
 -- name: CreateLiability :one
-INSERT INTO liabilities (
-    loan_application_id, applicant_id, liability_type, creditor_name,
-    account_or_loan_number, monthly_payment, outstanding_balance,
-    is_secured, asset_securing_liability, remaining_payments
+INSERT INTO liability (
+    borrower_id, owned_property_id, liability_type, account_company_name,
+    account_number, unpaid_balance, monthly_payment, to_be_paid_off_before_closing
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
-) RETURNING liability_id, loan_application_id, applicant_id, liability_type, creditor_name, monthly_payment, created_date;
+    $1, $2, $3, $4, $5, $6, $7, $8
+) RETURNING id, borrower_id, owned_property_id, liability_type, account_company_name, monthly_payment;
 
--- name: GetLiabilitiesByApplicationID :many
+-- name: GetLiabilitiesByBorrowerID :many
 SELECT 
-    liability_id, loan_application_id, applicant_id, liability_type, creditor_name,
-    account_or_loan_number, monthly_payment, outstanding_balance,
-    is_secured, asset_securing_liability, remaining_payments,
-    created_date, last_updated_date
-FROM liabilities
-WHERE loan_application_id = $1
-ORDER BY liability_type, created_date;
+    id, borrower_id, owned_property_id, liability_type, account_company_name,
+    account_number, unpaid_balance, monthly_payment, to_be_paid_off_before_closing
+FROM liability
+WHERE borrower_id = $1
+ORDER BY liability_type;
 
 -- name: UpdateLiability :one
-UPDATE liabilities
+UPDATE liability
 SET 
-    liability_type = COALESCE($2, liability_type),
-    creditor_name = COALESCE($3, creditor_name),
-    account_or_loan_number = COALESCE($4, account_or_loan_number),
-    monthly_payment = COALESCE($5, monthly_payment),
-    outstanding_balance = COALESCE($6, outstanding_balance),
-    is_secured = COALESCE($7, is_secured),
-    asset_securing_liability = COALESCE($8, asset_securing_liability),
-    remaining_payments = COALESCE($9, remaining_payments),
-    last_updated_date = CURRENT_TIMESTAMP
-WHERE liability_id = $1
-RETURNING liability_id, loan_application_id, applicant_id, liability_type, creditor_name, monthly_payment, created_date, last_updated_date;
+    owned_property_id = COALESCE($2, owned_property_id),
+    liability_type = COALESCE($3, liability_type),
+    account_company_name = COALESCE($4, account_company_name),
+    account_number = COALESCE($5, account_number),
+    unpaid_balance = COALESCE($6, unpaid_balance),
+    monthly_payment = COALESCE($7, monthly_payment),
+    to_be_paid_off_before_closing = COALESCE($8, to_be_paid_off_before_closing)
+WHERE id = $1
+RETURNING id, borrower_id, owned_property_id, liability_type, account_company_name, monthly_payment;
 
 -- name: DeleteLiability :exec
-DELETE FROM liabilities
-WHERE liability_id = $1;
+DELETE FROM liability
+WHERE id = $1;

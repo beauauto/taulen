@@ -1,40 +1,44 @@
 -- name: CreateEmployment :one
-INSERT INTO employments (
-    applicant_id, employer_name, street_address, city, state, zip_code,
-    phone_number, position, employment_type, start_date, end_date,
-    years_at_employer, monthly_income
+INSERT INTO employment (
+    borrower_id, employment_status, employer_name, employer_phone,
+    employer_address_line_text, employer_city, employer_state_code, employer_postal_code,
+    position_title, start_date, end_date, years_in_line_of_work_years, years_in_line_of_work_months,
+    self_employed_indicator, ownership_share_percentage, employed_by_family_or_party_indicator
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
-) RETURNING employment_id, applicant_id, employer_name, position, start_date, created_date;
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
+) RETURNING id, borrower_id, employment_status, employer_name, position_title, start_date;
 
--- name: GetEmploymentsByApplicantID :many
+-- name: GetEmploymentsByBorrowerID :many
 SELECT 
-    employment_id, applicant_id, employer_name, street_address, city, state, zip_code,
-    phone_number, position, employment_type, start_date, end_date,
-    years_at_employer, monthly_income, created_date, last_updated_date
-FROM employments
-WHERE applicant_id = $1
+    id, borrower_id, employment_status, employer_name, employer_phone,
+    employer_address_line_text, employer_city, employer_state_code, employer_postal_code,
+    position_title, start_date, end_date, years_in_line_of_work_years, years_in_line_of_work_months,
+    self_employed_indicator, ownership_share_percentage, employed_by_family_or_party_indicator
+FROM employment
+WHERE borrower_id = $1
 ORDER BY start_date DESC;
 
 -- name: UpdateEmployment :one
-UPDATE employments
+UPDATE employment
 SET 
-    employer_name = COALESCE($2, employer_name),
-    street_address = COALESCE($3, street_address),
-    city = COALESCE($4, city),
-    state = COALESCE($5, state),
-    zip_code = COALESCE($6, zip_code),
-    phone_number = COALESCE($7, phone_number),
-    position = COALESCE($8, position),
-    employment_type = COALESCE($9, employment_type),
+    employment_status = COALESCE($2, employment_status),
+    employer_name = COALESCE($3, employer_name),
+    employer_phone = COALESCE($4, employer_phone),
+    employer_address_line_text = COALESCE($5, employer_address_line_text),
+    employer_city = COALESCE($6, employer_city),
+    employer_state_code = COALESCE($7, employer_state_code),
+    employer_postal_code = COALESCE($8, employer_postal_code),
+    position_title = COALESCE($9, position_title),
     start_date = COALESCE($10, start_date),
     end_date = COALESCE($11, end_date),
-    years_at_employer = COALESCE($12, years_at_employer),
-    monthly_income = COALESCE($13, monthly_income),
-    last_updated_date = CURRENT_TIMESTAMP
-WHERE employment_id = $1
-RETURNING employment_id, applicant_id, employer_name, position, start_date, created_date, last_updated_date;
+    years_in_line_of_work_years = COALESCE($12, years_in_line_of_work_years),
+    years_in_line_of_work_months = COALESCE($13, years_in_line_of_work_months),
+    self_employed_indicator = COALESCE($14, self_employed_indicator),
+    ownership_share_percentage = COALESCE($15, ownership_share_percentage),
+    employed_by_family_or_party_indicator = COALESCE($16, employed_by_family_or_party_indicator)
+WHERE id = $1
+RETURNING id, borrower_id, employment_status, employer_name, position_title, start_date;
 
 -- name: DeleteEmployment :exec
-DELETE FROM employments
-WHERE employment_id = $1;
+DELETE FROM employment
+WHERE id = $1;

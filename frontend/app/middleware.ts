@@ -21,7 +21,9 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // If accessing auth route with token, redirect to dashboard
+  // If accessing auth route with token, redirect based on user type
+  // Note: We can't check user type in middleware without decoding JWT
+  // So we redirect to a generic dashboard and let the app handle routing
   if (isAuthRoute && token) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }

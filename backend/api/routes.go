@@ -68,6 +68,8 @@ func SetupRoutes(cfg *config.Config) *gin.Engine {
 				urla.PUT("/applications/:id/status", urlaHandler.UpdateApplicationStatus)
 				urla.POST("/applications/:id/save", urlaHandler.SaveApplication)
 				urla.GET("/applications/:id/progress", urlaHandler.GetApplicationProgress)
+				urla.PATCH("/applications/:id/progress/section", urlaHandler.UpdateApplicationProgressSection)
+				urla.PATCH("/applications/:id/progress/notes", urlaHandler.UpdateApplicationProgressNotes)
 			}
 		}
 	}

@@ -1,29 +1,27 @@
 -- name: CreateAsset :one
-INSERT INTO assets (
-    loan_application_id, applicant_id, asset_type, description, current_value, account_last_four
+INSERT INTO asset (
+    borrower_id, asset_type, financial_institution_name, account_number, cash_or_market_value
 ) VALUES (
-    $1, $2, $3, $4, $5, $6
-) RETURNING asset_id, loan_application_id, applicant_id, asset_type, current_value, created_date;
+    $1, $2, $3, $4, $5
+) RETURNING id, borrower_id, asset_type, financial_institution_name, account_number, cash_or_market_value;
 
--- name: GetAssetsByApplicationID :many
+-- name: GetAssetsByBorrowerID :many
 SELECT 
-    asset_id, loan_application_id, applicant_id, asset_type, description,
-    current_value, account_last_four, created_date, last_updated_date
-FROM assets
-WHERE loan_application_id = $1
-ORDER BY asset_type, created_date;
+    id, borrower_id, asset_type, financial_institution_name, account_number, cash_or_market_value
+FROM asset
+WHERE borrower_id = $1
+ORDER BY asset_type;
 
 -- name: UpdateAsset :one
-UPDATE assets
+UPDATE asset
 SET 
     asset_type = COALESCE($2, asset_type),
-    description = COALESCE($3, description),
-    current_value = COALESCE($4, current_value),
-    account_last_four = COALESCE($5, account_last_four),
-    last_updated_date = CURRENT_TIMESTAMP
-WHERE asset_id = $1
-RETURNING asset_id, loan_application_id, applicant_id, asset_type, current_value, created_date, last_updated_date;
+    financial_institution_name = COALESCE($3, financial_institution_name),
+    account_number = COALESCE($4, account_number),
+    cash_or_market_value = COALESCE($5, cash_or_market_value)
+WHERE id = $1
+RETURNING id, borrower_id, asset_type, financial_institution_name, account_number, cash_or_market_value;
 
 -- name: DeleteAsset :exec
-DELETE FROM assets
-WHERE asset_id = $1;
+DELETE FROM asset
+WHERE id = $1;

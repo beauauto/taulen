@@ -1,40 +1,75 @@
--- name: CreateProperty :one
-INSERT INTO properties (
-    street_address, unit_number, city, state, zip_code, county,
-    number_of_units, year_built, purchase_price, estimated_value,
-    legal_description, property_occupancy_type, property_acquired_date,
-    original_cost, improvement_cost
+-- name: CreateOwnedProperty :one
+INSERT INTO owned_property (
+    borrower_id, property_usage_type, property_status, address_line_text, city_name,
+    state_code, postal_code, estimated_market_value, unpaid_balance, monthly_payment,
+    gross_monthly_rental_income, net_monthly_rental_income
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
-) RETURNING property_id, street_address, city, state, zip_code, created_date;
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+) RETURNING id, borrower_id, property_usage_type, property_status, address_line_text, city_name;
 
--- name: GetPropertyByID :one
+-- name: GetOwnedPropertyByID :one
 SELECT 
-    property_id, street_address, unit_number, city, state, zip_code, county,
-    number_of_units, year_built, purchase_price, estimated_value,
-    legal_description, property_occupancy_type, property_acquired_date,
-    original_cost, improvement_cost, created_date, last_updated_date
-FROM properties
-WHERE property_id = $1 LIMIT 1;
+    id, borrower_id, property_usage_type, property_status, address_line_text, city_name,
+    state_code, postal_code, estimated_market_value, unpaid_balance, monthly_payment,
+    gross_monthly_rental_income, net_monthly_rental_income
+FROM owned_property
+WHERE id = $1 LIMIT 1;
 
--- name: UpdateProperty :one
-UPDATE properties
+-- name: GetOwnedPropertiesByBorrowerID :many
+SELECT 
+    id, borrower_id, property_usage_type, property_status, address_line_text, city_name,
+    state_code, postal_code, estimated_market_value, unpaid_balance, monthly_payment,
+    gross_monthly_rental_income, net_monthly_rental_income
+FROM owned_property
+WHERE borrower_id = $1
+ORDER BY property_usage_type;
+
+-- name: UpdateOwnedProperty :one
+UPDATE owned_property
 SET 
-    street_address = COALESCE($2, street_address),
-    unit_number = COALESCE($3, unit_number),
-    city = COALESCE($4, city),
-    state = COALESCE($5, state),
-    zip_code = COALESCE($6, zip_code),
-    county = COALESCE($7, county),
-    number_of_units = COALESCE($8, number_of_units),
-    year_built = COALESCE($9, year_built),
-    purchase_price = COALESCE($10, purchase_price),
-    estimated_value = COALESCE($11, estimated_value),
-    legal_description = COALESCE($12, legal_description),
-    property_occupancy_type = COALESCE($13, property_occupancy_type),
-    property_acquired_date = COALESCE($14, property_acquired_date),
-    original_cost = COALESCE($15, original_cost),
-    improvement_cost = COALESCE($16, improvement_cost),
-    last_updated_date = CURRENT_TIMESTAMP
-WHERE property_id = $1
-RETURNING property_id, street_address, city, state, zip_code, created_date, last_updated_date;
+    property_usage_type = COALESCE($2, property_usage_type),
+    property_status = COALESCE($3, property_status),
+    address_line_text = COALESCE($4, address_line_text),
+    city_name = COALESCE($5, city_name),
+    state_code = COALESCE($6, state_code),
+    postal_code = COALESCE($7, postal_code),
+    estimated_market_value = COALESCE($8, estimated_market_value),
+    unpaid_balance = COALESCE($9, unpaid_balance),
+    monthly_payment = COALESCE($10, monthly_payment),
+    gross_monthly_rental_income = COALESCE($11, gross_monthly_rental_income),
+    net_monthly_rental_income = COALESCE($12, net_monthly_rental_income)
+WHERE id = $1
+RETURNING id, borrower_id, property_usage_type, property_status, address_line_text, city_name;
+
+-- name: DeleteOwnedProperty :exec
+DELETE FROM owned_property
+WHERE id = $1;
+
+-- name: CreateSubjectProperty :one
+INSERT INTO subject_property (
+    deal_id, address_line_text, city_name, state_code, postal_code, unit_number,
+    property_usage_type, estimated_value, projected_monthly_rental_income
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9
+) RETURNING id, deal_id, address_line_text, city_name, state_code;
+
+-- name: GetSubjectPropertyByDealID :one
+SELECT 
+    id, deal_id, address_line_text, city_name, state_code, postal_code, unit_number,
+    property_usage_type, estimated_value, projected_monthly_rental_income
+FROM subject_property
+WHERE deal_id = $1 LIMIT 1;
+
+-- name: UpdateSubjectProperty :one
+UPDATE subject_property
+SET 
+    address_line_text = COALESCE($2, address_line_text),
+    city_name = COALESCE($3, city_name),
+    state_code = COALESCE($4, state_code),
+    postal_code = COALESCE($5, postal_code),
+    unit_number = COALESCE($6, unit_number),
+    property_usage_type = COALESCE($7, property_usage_type),
+    estimated_value = COALESCE($8, estimated_value),
+    projected_monthly_rental_income = COALESCE($9, projected_monthly_rental_income)
+WHERE id = $1
+RETURNING id, deal_id, address_line_text, city_name, state_code;

@@ -72,4 +72,8 @@ export const urlaApi = {
     apiClient.post(`/urla/applications/${id}/save`, data),
   getApplicationProgress: (id: number) =>
     apiClient.get(`/urla/applications/${id}/progress`),
+  updateProgressSection: (id: number, section: string, complete: boolean) =>
+    apiClient.patch(`/urla/applications/${id}/progress/section`, { section, complete }),
+  updateProgressNotes: (id: number, notes: string) =>
+    apiClient.patch(`/urla/applications/${id}/progress/notes`, { notes }),
 }

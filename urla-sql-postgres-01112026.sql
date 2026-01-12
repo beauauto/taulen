@@ -32,12 +32,37 @@ CREATE TABLE "user" (
     user_role VARCHAR(30), -- e.g., 'LoanOfficer', 'Processor', 'Underwriter', 'Admin'
     user_type VARCHAR(50) NOT NULL DEFAULT 'employee',
     status VARCHAR(50) DEFAULT 'active', -- active, inactive, suspended
-    mfa_enabled BOOLEAN DEFAULT FALSE,
     nmlsr_identifier VARCHAR(20),
     is_active BOOLEAN DEFAULT TRUE,
+    
+    -- Email verification
+    email_verified BOOLEAN DEFAULT FALSE,
+    email_verification_token VARCHAR(255),
+    email_verification_expires_at TIMESTAMP WITH TIME ZONE,
+    
+    -- Password reset
+    password_reset_token VARCHAR(255),
+    password_reset_expires_at TIMESTAMP WITH TIME ZONE,
+    last_password_change_at TIMESTAMP WITH TIME ZONE,
+    
+    -- Multi-factor authentication (2FA/MFA)
+    mfa_enabled BOOLEAN DEFAULT FALSE,
+    mfa_secret VARCHAR(255), -- Encrypted TOTP secret
+    mfa_backup_codes TEXT, -- Encrypted backup codes (JSON array or comma-separated)
+    mfa_setup_at TIMESTAMP WITH TIME ZONE,
+    mfa_verified_at TIMESTAMP WITH TIME ZONE, -- Last successful MFA verification
+    
+    -- Account security
+    last_login_at TIMESTAMP WITH TIME ZONE,
+    failed_login_attempts INTEGER DEFAULT 0,
+    account_locked_until TIMESTAMP WITH TIME ZONE,
+    
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_user_email_verification_token ON "user"(email_verification_token) WHERE email_verification_token IS NOT NULL;
+CREATE INDEX idx_user_password_reset_token ON "user"(password_reset_token) WHERE password_reset_token IS NOT NULL;
 
 CREATE TABLE deal (
     id SERIAL PRIMARY KEY,
@@ -78,6 +103,28 @@ CREATE TABLE borrower (
     email_address VARCHAR(80) UNIQUE,  -- Email for authentication
     password_hash VARCHAR(255),  -- Password hash for authentication
     
+    -- Email verification
+    email_verified BOOLEAN DEFAULT FALSE,
+    email_verification_token VARCHAR(255),
+    email_verification_expires_at TIMESTAMP WITH TIME ZONE,
+    
+    -- Password reset
+    password_reset_token VARCHAR(255),
+    password_reset_expires_at TIMESTAMP WITH TIME ZONE,
+    last_password_change_at TIMESTAMP WITH TIME ZONE,
+    
+    -- Multi-factor authentication (2FA/MFA)
+    mfa_enabled BOOLEAN DEFAULT FALSE,
+    mfa_secret VARCHAR(255), -- Encrypted TOTP secret
+    mfa_backup_codes TEXT, -- Encrypted backup codes (JSON array or comma-separated)
+    mfa_setup_at TIMESTAMP WITH TIME ZONE,
+    mfa_verified_at TIMESTAMP WITH TIME ZONE, -- Last successful MFA verification
+    
+    -- Account security
+    last_login_at TIMESTAMP WITH TIME ZONE,
+    failed_login_attempts INTEGER DEFAULT 0,
+    account_locked_until TIMESTAMP WITH TIME ZONE,
+    
     -- Name
     first_name VARCHAR(35) NOT NULL,
     middle_name VARCHAR(35),
@@ -117,10 +164,16 @@ CREATE TABLE borrower (
     home_phone VARCHAR(15),
     mobile_phone VARCHAR(15),
     work_phone VARCHAR(15),
-    work_phone_extension VARCHAR(10)
+    work_phone_extension VARCHAR(10),
+    
+    -- Timestamps
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_borrower_email ON borrower(email_address) WHERE email_address IS NOT NULL;
+CREATE INDEX idx_borrower_email_verification_token ON borrower(email_verification_token) WHERE email_verification_token IS NOT NULL;
+CREATE INDEX idx_borrower_password_reset_token ON borrower(password_reset_token) WHERE password_reset_token IS NOT NULL;
 
 -- Alternate names (aka/maiden names)
 CREATE TABLE borrower_alternate_name (

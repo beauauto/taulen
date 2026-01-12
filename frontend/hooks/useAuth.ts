@@ -70,14 +70,36 @@ export function useAuth() {
       // Small delay to ensure cookies are set before redirect
       await new Promise(resolve => setTimeout(resolve, 100))
       
-      // Redirect based on user type
-      const redirectPath = userData.userType === 'employee' 
-        ? '/dashboard/employee' 
-        : userData.userType === 'applicant'
-        ? '/dashboard/applicant'
-        : '/dashboard'
+      // Redirect based on user type and role
+      // Sign up only creates borrowers, so registration always goes to applicant dashboard
+      // Sign in bifurcates: borrowers → applicant dashboard, employees → role-based dashboard
+      let redirectPath = '/dashboard'
       
-      console.log('Redirecting to:', redirectPath)
+      if (userData.userType === 'applicant') {
+        // Borrowers always go to applicant dashboard
+        redirectPath = '/dashboard/applicant'
+      } else if (userData.userType === 'employee') {
+        // Employees are routed based on their role
+        // Backend uses PascalCase: LoanOfficer, Underwriter, Processor, Admin
+        const role = userData.role?.toLowerCase() || ''
+        
+        // Normalize role to lowercase for comparison (handles both PascalCase and snake_case)
+        if (role === 'underwriter') {
+          redirectPath = '/dashboard/underwriter'
+        } else if (role === 'loanofficer' || role === 'loan_officer') {
+          // Loan officers (brokers) use the employee dashboard
+          redirectPath = '/dashboard/employee'
+        } else if (role === 'processor') {
+          redirectPath = '/dashboard/processor'
+        } else if (role === 'admin') {
+          redirectPath = '/dashboard/admin'
+        } else {
+          // Default employee dashboard for any other role (including LoanOfficer)
+          redirectPath = '/dashboard/employee'
+        }
+      }
+      
+      console.log('Redirecting to:', redirectPath, 'for user type:', userData.userType, 'role:', userData.role)
       router.push(redirectPath)
       
       return { success: true }

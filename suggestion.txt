@@ -1,0 +1,159 @@
+### Problem Analysis
+Filling a mortgage application like the URLA 2019 is indeed lengthy, often spanning multiple sessions due to data gathering (e.g., income docs, asset statements). To track progress and enable resumption:
+- **Core Needs**: Persist form state per deal/borrower, track completed sections/fields, calculate overall progress, and resume UI at the last incomplete section.
+- **Challenges**: Schema is entity-based (e.g., borrower, assets), not form-section-based. Need to map progress to URLA sections (1a–8 + Lender/Continuation).
+- **Assumptions**: App is web-based (e.g., React/Vue backend with Postgres). Users authenticate (e.g., via borrower/user ID). Progress is per-deal (application instance), with optional per-borrower granularity for joint apps.
+
+### Recommended Mechanisms
+I'll break this into **schema additions** (database persistence) and **app-level implementation** (logic/UI). This ensures atomic saves, auditability, and resumption without losing data.
+
+#### 1. Schema Additions
+Add a new table `deal_progress` to track section-level completion (tied to `deal.id`). This avoids bloating existing tables. Key features:
+- Section enum based on URLA (1a–8, Lender L1–L4, Continuation, Acknowledgments).
+- Boolean flags for completion (e.g., `section_1a_complete`).
+- Last updated timestamp/section for resumption.
+- Progress percentage (computed or stored; use trigger for auto-calc).
+- Notes/log for partial saves (e.g., "Section 2b: Missing asset verification").
+
+ALTER statements (apply to latest 01122026 schema):
+
+```sql
+-- Enum for URLA sections (for progress tracking)
+CREATE TYPE urla_section_enum AS ENUM (
+    'Section1a_PersonalInfo',
+    'Section1b_CurrentEmployment',
+    'Section1c_AdditionalEmployment',
+    'Section1d_PreviousEmployment',
+    'Section1e_OtherIncome',
+    'Section2a_Assets',
+    'Section2b_OtherAssetsCredits',
+    'Section2c_Liabilities',
+    'Section2d_Expenses',
+    'Section3_RealEstateOwned',
+    'Section4_LoanPropertyInfo',
+    'Section5_Declarations',
+    'Section6_Acknowledgments',
+    'Section7_MilitaryService',
+    'Section8_Demographics',
+    'Section9_OriginatorInfo',  -- Lender-completed, but track if applicant views
+    'Lender_L1_PropertyLoanInfo',
+    'Lender_L2_TitleInfo',
+    'Lender_L3_MortgageLoanInfo',
+    'Lender_L4_Qualification',
+    'ContinuationSheet',
+    'UnmarriedAddendum'  -- Conditional, but track separately
+);
+
+-- New table for deal-level progress tracking
+CREATE TABLE deal_progress (
+    id SERIAL PRIMARY KEY,
+    deal_id INTEGER UNIQUE NOT NULL REFERENCES deal(id) ON DELETE CASCADE,
+    
+    -- Completion flags per section (BOOLEAN DEFAULT FALSE)
+    section_1a_complete BOOLEAN DEFAULT FALSE,
+    section_1b_complete BOOLEAN DEFAULT FALSE,
+    section_1c_complete BOOLEAN DEFAULT FALSE,
+    section_1d_complete BOOLEAN DEFAULT FALSE,
+    section_1e_complete BOOLEAN DEFAULT FALSE,
+    section_2a_complete BOOLEAN DEFAULT FALSE,
+    section_2b_complete BOOLEAN DEFAULT FALSE,
+    section_2c_complete BOOLEAN DEFAULT FALSE,
+    section_2d_complete BOOLEAN DEFAULT FALSE,
+    section_3_complete BOOLEAN DEFAULT FALSE,
+    section_4_complete BOOLEAN DEFAULT FALSE,
+    section_5_complete BOOLEAN DEFAULT FALSE,
+    section_6_complete BOOLEAN DEFAULT FALSE,
+    section_7_complete BOOLEAN DEFAULT FALSE,
+    section_8_complete BOOLEAN DEFAULT FALSE,
+    section_9_complete BOOLEAN DEFAULT FALSE,
+    lender_l1_complete BOOLEAN DEFAULT FALSE,
+    lender_l2_complete BOOLEAN DEFAULT FALSE,
+    lender_l3_complete BOOLEAN DEFAULT FALSE,
+    lender_l4_complete BOOLEAN DEFAULT FALSE,
+    continuation_complete BOOLEAN DEFAULT FALSE,
+    unmarried_addendum_complete BOOLEAN DEFAULT FALSE,
+    
+    -- Overall progress (0-100%, auto-computed)
+    progress_percentage INTEGER DEFAULT 0 CHECK (progress_percentage BETWEEN 0 AND 100),
+    
+    -- Resumption helpers
+    last_updated_section urla_section_enum,
+    last_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Notes/log for partial saves or issues
+    progress_notes TEXT,
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index for quick lookup
+CREATE INDEX idx_deal_progress_deal_id ON deal_progress(deal_id);
+
+-- Trigger to auto-update progress percentage (simple average of completed flags)
+CREATE OR REPLACE FUNCTION update_progress_percentage()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.progress_percentage = (
+        (CASE WHEN NEW.section_1a_complete THEN 1 ELSE 0 END +
+         CASE WHEN NEW.section_1b_complete THEN 1 ELSE 0 END +
+         -- ... add all CASE statements for each flag ...
+         CASE WHEN NEW.unmarried_addendum_complete THEN 1 ELSE 0 END)  -- Repeat for all 22 flags
+        )::FLOAT / 22 * 100;  -- Adjust denominator to match # of flags
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_update_progress
+BEFORE UPDATE ON deal_progress
+FOR EACH ROW EXECUTE PROCEDURE update_progress_percentage();
+
+-- Optional: Per-borrower progress override for joint apps (if needed)
+CREATE TABLE borrower_progress (
+    id SERIAL PRIMARY KEY,
+    borrower_id INTEGER UNIQUE NOT NULL REFERENCES borrower(id) ON DELETE CASCADE,
+    deal_progress_id INTEGER REFERENCES deal_progress(id),
+    -- Add borrower-specific flags if joint apps need granular tracking (e.g., section_1a_complete BOOLEAN)
+    notes TEXT
+);
+```
+
+- **Why this design?**
+  - **Granularity**: Section-level flags allow precise resumption (e.g., redirect to Section 2b if incomplete).
+  - **Calculation**: Trigger auto-computes % (customize weights if sections vary in importance, e.g., declarations 20%).
+  - **Resumption**: Query `last_updated_section` to route user (e.g., if 'Section5_Declarations', load that form tab).
+  - **Joint Apps**: Deal-level primary, with optional borrower overrides via `borrower_progress`.
+  - **Data Integrity**: FK to `deal`, timestamps for sessions.
+
+- **One-time Data Migration**: On first use, insert a row into `deal_progress` for existing deals (e.g., via trigger on `deal` insert).
+
+#### 2. App-Level Implementation
+Schema alone isn't enough — integrate with application logic for a seamless UX. Recommendations as a software engineer:
+
+- **Frontend State Management** (e.g., React/Vue):
+  - Use a wizard/stepper component (e.g., react-hook-form + multi-step form).
+  - On section save/submit: API call to update `deal_progress` flags (e.g., PATCH /deals/{id}/progress {section: 'Section1a_PersonalInfo', complete: true}).
+  - On load: GET /deals/{id}/progress → Find first incomplete section, navigate there.
+  - Autosave: Use debounced onChange handlers to persist partial data (e.g., via localStorage for draft, sync to DB on blur/focus loss).
+
+- **Backend API** (e.g., Node/Express or Python/Flask):
+  - Endpoint: `/deals/:id/progress` (GET/POST/PATCH).
+  - Validate progress: Before marking complete, check required fields (e.g., if Section 1a, ensure `borrower.marital_status` NOT NULL).
+  - Session Handling: Use JWT/auth tokens tied to borrower/user ID. On re-login, fetch progress and resume.
+  - Error Handling: If data incomplete, return {nextSection: 'Section2a_Assets', message: 'Complete personal info first'}.
+
+- **Advanced Features**:
+  - **Percentage UI**: Progress bar showing `progress_percentage`.
+  - **Timeouts/Sessions**: Use WebSockets (e.g., Socket.io) for real-time autosave if multi-device.
+  - **Validation Hooks**: Integrate with schema constraints (e.g., use Zod/JSON Schema for form validation mirroring DB CHECKs).
+  - **Analytics**: Log resumption events in `deal_status_history` (e.g., 'Resumed at Section 4').
+
+- **Security/Compliance**:
+  - Encrypt sensitive progress data (e.g., PII in notes).
+  - Audit: Every progress update logs in a history table (extend `deal_status_history` for progress changes).
+  - DU Submission: Only submit when 100% complete; flag incomplete in UI.
+
+This setup makes the app resilient to drop-offs, reducing abandonment rates. Total schema impact: Minimal (1–2 new tables). Implementation effort: Medium (API + UI wizard).
+
+If you need code snippets (e.g., React form example or migration script), let me know!

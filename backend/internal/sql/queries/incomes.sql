@@ -1,28 +1,52 @@
--- name: CreateIncome :one
-INSERT INTO incomes (
-    applicant_id, income_type, monthly_amount, description
+-- name: CreateOtherIncome :one
+INSERT INTO other_income (
+    borrower_id, income_source_type, other_description, monthly_amount
 ) VALUES (
     $1, $2, $3, $4
-) RETURNING income_id, applicant_id, income_type, monthly_amount, created_date;
+) RETURNING id, borrower_id, income_source_type, other_description, monthly_amount;
 
--- name: GetIncomesByApplicantID :many
+-- name: GetOtherIncomesByBorrowerID :many
 SELECT 
-    income_id, applicant_id, income_type, monthly_amount, description,
-    created_date, last_updated_date
-FROM incomes
-WHERE applicant_id = $1
+    id, borrower_id, income_source_type, other_description, monthly_amount
+FROM other_income
+WHERE borrower_id = $1
+ORDER BY income_source_type;
+
+-- name: UpdateOtherIncome :one
+UPDATE other_income
+SET 
+    income_source_type = COALESCE($2, income_source_type),
+    other_description = COALESCE($3, other_description),
+    monthly_amount = COALESCE($4, monthly_amount)
+WHERE id = $1
+RETURNING id, borrower_id, income_source_type, other_description, monthly_amount;
+
+-- name: DeleteOtherIncome :exec
+DELETE FROM other_income
+WHERE id = $1;
+
+-- name: CreateEmploymentIncome :one
+INSERT INTO employment_income (
+    employment_id, income_type, monthly_amount
+) VALUES (
+    $1, $2, $3
+) RETURNING id, employment_id, income_type, monthly_amount;
+
+-- name: GetEmploymentIncomesByEmploymentID :many
+SELECT 
+    id, employment_id, income_type, monthly_amount
+FROM employment_income
+WHERE employment_id = $1
 ORDER BY income_type;
 
--- name: UpdateIncome :one
-UPDATE incomes
+-- name: UpdateEmploymentIncome :one
+UPDATE employment_income
 SET 
     income_type = COALESCE($2, income_type),
-    monthly_amount = COALESCE($3, monthly_amount),
-    description = COALESCE($4, description),
-    last_updated_date = CURRENT_TIMESTAMP
-WHERE income_id = $1
-RETURNING income_id, applicant_id, income_type, monthly_amount, created_date, last_updated_date;
+    monthly_amount = COALESCE($3, monthly_amount)
+WHERE id = $1
+RETURNING id, employment_id, income_type, monthly_amount;
 
--- name: DeleteIncome :exec
-DELETE FROM incomes
-WHERE income_id = $1;
+-- name: DeleteEmploymentIncome :exec
+DELETE FROM employment_income
+WHERE id = $1;

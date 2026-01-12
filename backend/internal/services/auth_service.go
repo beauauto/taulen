@@ -26,7 +26,7 @@ func NewAuthService(cfg *config.Config) *AuthService {
 	}
 }
 
-// RegisterRequest represents a registration request (applicants only)
+// RegisterRequest represents a registration request (borrowers only)
 type RegisterRequest struct {
 	Email     string `json:"email" binding:"required,email"`
 	Password  string `json:"password" binding:"required,min=8"`
@@ -62,7 +62,7 @@ type UserResponse struct {
 	UserType  string `json:"userType"`            // 'employee' or 'applicant'
 }
 
-// Register registers a new borrower (signup is only for borrowers/applicants)
+// Register registers a new borrower (signup is only for borrowers)
 // IMPORTANT: This creates entries in the "borrower" table, NOT the "user" table.
 // The "user" table is reserved for employees created by system admins via CreateEmployee.
 func (s *AuthService) Register(req RegisterRequest) (*AuthResponse, error) {
@@ -134,13 +134,13 @@ func (s *AuthService) Register(req RegisterRequest) (*AuthResponse, error) {
 	}, nil
 }
 
-// Login authenticates a user (employee or applicant)
-// First checks Users table, then Applicants table
+// Login authenticates a user (employee or borrower)
+// First checks user table, then borrower table
 func (s *AuthService) Login(req LoginRequest) (*AuthResponse, error) {
 	// Try employee login first
 	user, err := s.userRepo.GetByEmail(req.Email)
 	if err == nil {
-		// Found in Users table - employee login
+		// Found in user table - employee login
 		if user.Status != "active" {
 			return nil, errors.New("account is not active")
 		}

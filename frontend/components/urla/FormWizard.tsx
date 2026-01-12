@@ -14,13 +14,43 @@ import { URLAFormData } from '@/types/urla'
 import { urlaApi } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 
+// Map URLA section identifiers to backend section keys
+function mapURLASectionToKey(urlaSection: string): string {
+  const mapping: Record<string, string> = {
+    'Section1a_PersonalInfo': 'section1a',
+    'Section1b_CurrentEmployment': 'section1b',
+    'Section1c_AdditionalEmployment': 'section1c',
+    'Section1d_PreviousEmployment': 'section1d',
+    'Section1e_OtherIncome': 'section1e',
+    'Section2a_Assets': 'section2a',
+    'Section2b_OtherAssetsCredits': 'section2b',
+    'Section2c_Liabilities': 'section2c',
+    'Section2d_Expenses': 'section2d',
+    'Section3_RealEstateOwned': 'section3',
+    'Section4_LoanPropertyInfo': 'section4',
+    'Section5_Declarations': 'section5',
+    'Section6_Acknowledgments': 'section6',
+    'Section7_MilitaryService': 'section7',
+    'Section8_Demographics': 'section8',
+    'Section9_OriginatorInfo': 'section9',
+    'Lender_L1_PropertyLoanInfo': 'lenderL1',
+    'Lender_L2_TitleInfo': 'lenderL2',
+    'Lender_L3_MortgageLoanInfo': 'lenderL3',
+    'Lender_L4_Qualification': 'lenderL4',
+    'ContinuationSheet': 'continuation',
+    'UnmarriedAddendum': 'unmarriedAddendum',
+  }
+  return mapping[urlaSection] || urlaSection.toLowerCase()
+}
+
+// Map form sections to URLA section identifiers
 const FORM_SECTIONS = [
-  { id: 'borrower', title: 'Borrower Information', icon: '👤' },
-  { id: 'property', title: 'Property Information', icon: '🏠' },
-  { id: 'employment', title: 'Employment', icon: '💼' },
-  { id: 'income', title: 'Income Details', icon: '💰' },
-  { id: 'assets', title: 'Assets', icon: '💵' },
-  { id: 'liabilities', title: 'Debts & Liabilities', icon: '📋' },
+  { id: 'borrower', title: 'Borrower Information', icon: '👤', urlaSection: 'Section1a_PersonalInfo' },
+  { id: 'property', title: 'Property Information', icon: '🏠', urlaSection: 'Section4_LoanPropertyInfo' },
+  { id: 'employment', title: 'Employment', icon: '💼', urlaSection: 'Section1b_CurrentEmployment' },
+  { id: 'income', title: 'Income Details', icon: '💰', urlaSection: 'Section1e_OtherIncome' },
+  { id: 'assets', title: 'Assets', icon: '💵', urlaSection: 'Section2a_Assets' },
+  { id: 'liabilities', title: 'Debts & Liabilities', icon: '📋', urlaSection: 'Section2c_Liabilities' },
 ]
 
 interface FormWizardProps {
@@ -47,6 +77,46 @@ export function FormWizard({ applicationId, initialData }: FormWizardProps) {
   })
   const [isSaving, setIsSaving] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [progressData, setProgressData] = useState<{
+    progressPercentage: number
+    sections: Record<string, boolean>
+    nextIncompleteSection?: string
+  } | null>(null)
+  const [isLoadingProgress, setIsLoadingProgress] = useState(false)
+
+  // Load progress on mount and when applicationId changes
+  useEffect(() => {
+    if (!applicationId) return
+
+    const loadProgress = async () => {
+      setIsLoadingProgress(true)
+      try {
+        const response = await urlaApi.getApplicationProgress(applicationId)
+        const progress = response.data
+        setProgressData({
+          progressPercentage: progress.progressPercentage || 0,
+          sections: progress.sections || {},
+          nextIncompleteSection: progress.nextIncompleteSection,
+        })
+
+        // Navigate to next incomplete section if available
+        if (progress.nextIncompleteSection) {
+          const sectionIndex = FORM_SECTIONS.findIndex(
+            (s) => s.urlaSection === progress.nextIncompleteSection
+          )
+          if (sectionIndex !== -1) {
+            setCurrentStep(sectionIndex)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load progress:', error)
+      } finally {
+        setIsLoadingProgress(false)
+      }
+    }
+
+    loadProgress()
+  }, [applicationId])
 
   // Auto-save on form data changes (debounced)
   useEffect(() => {
@@ -107,8 +177,34 @@ export function FormWizard({ applicationId, initialData }: FormWizardProps) {
     return Object.keys(newErrors).length === 0
   }
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (validateCurrentSection()) {
+      // Mark current section as complete
+      if (applicationId) {
+        const currentSection = FORM_SECTIONS[currentStep]
+        try {
+          await urlaApi.updateProgressSection(
+            applicationId,
+            currentSection.urlaSection,
+            true
+          )
+          // Update local progress state
+          if (progressData) {
+            // Map URLA section to backend section key
+            const sectionKey = mapURLASectionToKey(currentSection.urlaSection)
+            setProgressData({
+              ...progressData,
+              sections: {
+                ...progressData.sections,
+                [sectionKey]: true,
+              },
+            })
+          }
+        } catch (error) {
+          console.error('Failed to update progress:', error)
+        }
+      }
+
       if (currentStep < FORM_SECTIONS.length - 1) {
         setCurrentStep(currentStep + 1)
       }
@@ -134,7 +230,8 @@ export function FormWizard({ applicationId, initialData }: FormWizardProps) {
     }
   }
 
-  const progress = ((currentStep + 1) / FORM_SECTIONS.length) * 100
+  // Use backend progress percentage if available, otherwise calculate from current step
+  const progress = progressData?.progressPercentage ?? ((currentStep + 1) / FORM_SECTIONS.length) * 100
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -155,7 +252,11 @@ export function FormWizard({ applicationId, initialData }: FormWizardProps) {
             />
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            Step {currentStep + 1} of {FORM_SECTIONS.length}
+            {progressData ? (
+              <>Progress: {progressData.progressPercentage}% complete</>
+            ) : (
+              <>Step {currentStep + 1} of {FORM_SECTIONS.length}</>
+            )}
           </p>
         </div>
       </div>
@@ -163,23 +264,32 @@ export function FormWizard({ applicationId, initialData }: FormWizardProps) {
       {/* Section Navigation (Mobile - Horizontal Scroll) */}
       <div className="bg-white border-b overflow-x-auto">
         <div className="flex space-x-1 px-4 py-2 min-w-max">
-          {FORM_SECTIONS.map((section, index) => (
-            <button
-              key={section.id}
-              onClick={() => setCurrentStep(index)}
-              className={`flex-shrink-0 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                index === currentStep
-                  ? 'bg-blue-50 text-blue-700'
-                  : index < currentStep
-                  ? 'bg-gray-100 text-gray-700'
-                  : 'text-gray-400'
-              }`}
-            >
-              <span className="mr-1">{section.icon}</span>
-              <span className="hidden sm:inline">{section.title}</span>
-              <span className="sm:hidden">{index + 1}</span>
-            </button>
-          ))}
+          {FORM_SECTIONS.map((section, index) => {
+            // Check if section is complete from progress data
+            const sectionKey = mapURLASectionToKey(section.urlaSection)
+            const isComplete = progressData?.sections[sectionKey] || false
+            
+            return (
+              <button
+                key={section.id}
+                onClick={() => setCurrentStep(index)}
+                className={`flex-shrink-0 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  index === currentStep
+                    ? 'bg-blue-50 text-blue-700'
+                    : isComplete
+                    ? 'bg-green-50 text-green-700'
+                    : index < currentStep
+                    ? 'bg-gray-100 text-gray-700'
+                    : 'text-gray-400'
+                }`}
+              >
+                <span className="mr-1">{section.icon}</span>
+                <span className="hidden sm:inline">{section.title}</span>
+                <span className="sm:hidden">{index + 1}</span>
+                {isComplete && <span className="ml-1">✓</span>}
+              </button>
+            )
+          })}
         </div>
       </div>
 

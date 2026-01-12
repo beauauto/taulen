@@ -1,37 +1,41 @@
 -- name: CreateResidence :one
-INSERT INTO residences (
-    applicant_id, street_address, unit_number, city, state, zip_code,
-    is_current_residence, start_date, end_date, housing_type, monthly_housing_payment
+INSERT INTO residence (
+    borrower_id, residency_type, residency_basis_type, address_line_text, city_name,
+    state_code, postal_code, country_code, unit_number, duration_years, duration_months, monthly_rent_amount
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
-) RETURNING residence_id, applicant_id, is_current_residence, start_date, created_date;
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+) RETURNING id, borrower_id, residency_type, residency_basis_type, address_line_text, city_name;
 
--- name: GetResidencesByApplicantID :many
+-- name: GetResidencesByBorrowerID :many
 SELECT 
-    residence_id, applicant_id, street_address, unit_number, city, state, zip_code,
-    is_current_residence, start_date, end_date, housing_type, monthly_housing_payment,
-    created_date, last_updated_date
-FROM residences
-WHERE applicant_id = $1
-ORDER BY is_current_residence DESC, start_date DESC;
+    id, borrower_id, residency_type, residency_basis_type, address_line_text, city_name,
+    state_code, postal_code, country_code, unit_number, duration_years, duration_months, monthly_rent_amount
+FROM residence
+WHERE borrower_id = $1
+ORDER BY 
+    CASE residency_type 
+        WHEN 'BorrowerCurrentResidence' THEN 1 
+        WHEN 'BorrowerMailingAddress' THEN 2 
+        ELSE 3 
+    END;
 
 -- name: UpdateResidence :one
-UPDATE residences
+UPDATE residence
 SET 
-    street_address = COALESCE($2, street_address),
-    unit_number = COALESCE($3, unit_number),
-    city = COALESCE($4, city),
-    state = COALESCE($5, state),
-    zip_code = COALESCE($6, zip_code),
-    is_current_residence = COALESCE($7, is_current_residence),
-    start_date = COALESCE($8, start_date),
-    end_date = COALESCE($9, end_date),
-    housing_type = COALESCE($10, housing_type),
-    monthly_housing_payment = COALESCE($11, monthly_housing_payment),
-    last_updated_date = CURRENT_TIMESTAMP
-WHERE residence_id = $1
-RETURNING residence_id, applicant_id, is_current_residence, start_date, created_date, last_updated_date;
+    residency_type = COALESCE($2, residency_type),
+    residency_basis_type = COALESCE($3, residency_basis_type),
+    address_line_text = COALESCE($4, address_line_text),
+    city_name = COALESCE($5, city_name),
+    state_code = COALESCE($6, state_code),
+    postal_code = COALESCE($7, postal_code),
+    country_code = COALESCE($8, country_code),
+    unit_number = COALESCE($9, unit_number),
+    duration_years = COALESCE($10, duration_years),
+    duration_months = COALESCE($11, duration_months),
+    monthly_rent_amount = COALESCE($12, monthly_rent_amount)
+WHERE id = $1
+RETURNING id, borrower_id, residency_type, residency_basis_type, address_line_text, city_name;
 
 -- name: DeleteResidence :exec
-DELETE FROM residences
-WHERE residence_id = $1;
+DELETE FROM residence
+WHERE id = $1;

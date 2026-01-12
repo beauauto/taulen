@@ -7,18 +7,21 @@ import (
 )
 
 // URLAService handles URLA application business logic
+// In the new schema, a mortgage application is called a "deal"
 type URLAService struct {
-	urlaRepo     *repositories.URLAApplicationRepository
-	userRepo     *repositories.UserRepository
-	borrowerRepo *repositories.BorrowerRepository
+	dealRepo         *repositories.DealRepository
+	dealProgressRepo *repositories.DealProgressRepository
+	userRepo         *repositories.UserRepository
+	borrowerRepo     *repositories.BorrowerRepository
 }
 
 // NewURLAService creates a new URLA service
 func NewURLAService() *URLAService {
 	return &URLAService{
-		urlaRepo:     repositories.NewURLAApplicationRepository(),
-		userRepo:     repositories.NewUserRepository(),
-		borrowerRepo: repositories.NewBorrowerRepository(),
+		dealRepo:         repositories.NewDealRepository(),
+		dealProgressRepo: repositories.NewDealProgressRepository(),
+		userRepo:         repositories.NewUserRepository(),
+		borrowerRepo:     repositories.NewBorrowerRepository(),
 	}
 }
 
@@ -50,14 +53,15 @@ func (s *URLAService) CreateApplication(userID string, req CreateApplicationRequ
 		return nil, errors.New("user not found")
 	}
 
-	// Create application with UserID (employee) and NULL ApplicantID (set later)
-	appID, err := s.urlaRepo.CreateApplication(userID, nil, req.LoanType, req.LoanPurpose, req.LoanAmount)
+	// Create deal (application) with UserID (employee) and NULL BorrowerID (set later)
+	// Note: loanType is not used in new schema, only loanPurpose
+	dealID, err := s.dealRepo.CreateDeal(userID, nil, req.LoanPurpose, req.LoanAmount)
 	if err != nil {
 		return nil, errors.New("failed to create application")
 	}
 
 	return &ApplicationResponse{
-		ID:          appID,
+		ID:          dealID,
 		LoanType:    req.LoanType,
 		LoanPurpose: req.LoanPurpose,
 		LoanAmount:  req.LoanAmount,
@@ -65,55 +69,55 @@ func (s *URLAService) CreateApplication(userID string, req CreateApplicationRequ
 	}, nil
 }
 
-// GetApplication retrieves an application by ID
-func (s *URLAService) GetApplication(applicationID int64) (map[string]interface{}, error) {
-	row, err := s.urlaRepo.GetApplicationByID(applicationID)
+// GetApplication retrieves a deal (application) by ID
+func (s *URLAService) GetApplication(dealID int64) (map[string]interface{}, error) {
+	row, err := s.dealRepo.GetDealByID(dealID)
 	if err != nil {
-		return nil, errors.New("application not found")
+		return nil, errors.New("deal not found")
 	}
 
-	var app struct {
-		ID              int64
-		ApplicantID     sql.NullInt64
-		UserID          sql.NullString
-		ApplicationDate sql.NullTime
-		LoanType        sql.NullString
-		LoanPurpose     sql.NullString
-		PropertyType    sql.NullString
-		PropertyUsage   sql.NullString
-		LoanAmount      sql.NullFloat64
-		DownPayment     sql.NullFloat64
-		TermYears       sql.NullInt64
-		InterestRate    sql.NullFloat64
-		AmortizationType sql.NullString
-		Status          sql.NullString
-		CreatedDate     sql.NullTime
-		LastUpdatedDate sql.NullTime
+	var deal struct {
+		ID                      int64
+		LoanNumber              sql.NullString
+		UniversalLoanIdentifier sql.NullString
+		AgencyCaseIdentifier    sql.NullString
+		ApplicationType         sql.NullString
+		TotalBorrowers         sql.NullInt64
+		ApplicationDate        sql.NullTime
+		CreatedAt              sql.NullTime
+		LoanID                 sql.NullInt64
+		LoanPurposeType        sql.NullString
+		LoanAmountRequested    sql.NullFloat64
+		LoanTermMonths         sql.NullInt64
+		InterestRatePercentage sql.NullFloat64
+		PropertyType           sql.NullString
+		ManufacturedHomeWidth  sql.NullString
+		TitleMannerType        sql.NullString
 	}
 
 	err = row.Scan(
-		&app.ID, &app.ApplicantID, &app.UserID, &app.ApplicationDate, &app.LoanType, &app.LoanPurpose,
-		&app.PropertyType, &app.PropertyUsage, &app.LoanAmount, &app.DownPayment,
-		&app.TermYears, &app.InterestRate, &app.AmortizationType, &app.Status,
-		&app.CreatedDate, &app.LastUpdatedDate,
+		&deal.ID, &deal.LoanNumber, &deal.UniversalLoanIdentifier, &deal.AgencyCaseIdentifier,
+		&deal.ApplicationType, &deal.TotalBorrowers, &deal.ApplicationDate, &deal.CreatedAt,
+		&deal.LoanID, &deal.LoanPurposeType, &deal.LoanAmountRequested, &deal.LoanTermMonths,
+		&deal.InterestRatePercentage, &deal.PropertyType, &deal.ManufacturedHomeWidth, &deal.TitleMannerType,
 	)
 	if err != nil {
-		return nil, errors.New("failed to retrieve application")
+		return nil, errors.New("failed to retrieve deal")
 	}
 
 	result := make(map[string]interface{})
-	result["id"] = app.ID
-	if app.LoanType.Valid {
-		result["loanType"] = app.LoanType.String
+	result["id"] = deal.ID
+	if deal.LoanNumber.Valid {
+		result["loanNumber"] = deal.LoanNumber.String
 	}
-	if app.LoanPurpose.Valid {
-		result["loanPurpose"] = app.LoanPurpose.String
+	if deal.LoanPurposeType.Valid {
+		result["loanPurpose"] = deal.LoanPurposeType.String
 	}
-	if app.LoanAmount.Valid {
-		result["loanAmount"] = app.LoanAmount.Float64
+	if deal.LoanAmountRequested.Valid {
+		result["loanAmount"] = deal.LoanAmountRequested.Float64
 	}
-	if app.Status.Valid {
-		result["status"] = app.Status.String
+	if deal.ApplicationType.Valid {
+		result["applicationType"] = deal.ApplicationType.String
 	}
 
 	return result, nil
@@ -129,12 +133,15 @@ func (s *URLAService) UpdateApplicationStatus(applicationID int64, status string
 		return errors.New("invalid status")
 	}
 
-	return s.urlaRepo.UpdateApplicationStatus(applicationID, status)
+	// TODO: The new schema doesn't have application_status field
+	// This needs to be added to the deal table or handled differently
+	// For now, return nil as placeholder
+	return nil
 }
 
 // GetApplicationsByEmployee retrieves all applications managed by an employee
 func (s *URLAService) GetApplicationsByEmployee(userID string) ([]ApplicationResponse, error) {
-	rows, err := s.urlaRepo.GetApplicationsByUserID(userID)
+	rows, err := s.dealRepo.GetDealsByUserID(userID)
 	if err != nil {
 		return nil, errors.New("failed to retrieve applications")
 	}
@@ -205,7 +212,7 @@ func (s *URLAService) GetApplicationsByEmployee(userID string) ([]ApplicationRes
 
 // GetApplicationsByBorrower retrieves all applications for a borrower
 func (s *URLAService) GetApplicationsByBorrower(borrowerID int64) ([]ApplicationResponse, error) {
-	rows, err := s.urlaRepo.GetApplicationsByBorrowerID(borrowerID)
+	rows, err := s.dealRepo.GetDealsByBorrowerID(borrowerID)
 	if err != nil {
 		return nil, errors.New("failed to retrieve applications")
 	}
@@ -283,10 +290,9 @@ func (s *URLAService) CreateApplicationForBorrower(borrowerID int64, req CreateA
 		return nil, errors.New("borrower not found")
 	}
 
-	// Create application - UserID can be NULL if no employee assigned yet
+	// Create deal (application) - UserID can be NULL if no employee assigned yet
 	// Note: The new schema uses deal/loan instead of loan_application
-	// For now, we'll pass borrowerID to maintain compatibility
-	appID, err := s.urlaRepo.CreateApplication("", &borrowerID, req.LoanType, req.LoanPurpose, req.LoanAmount)
+	dealID, err := s.dealRepo.CreateDeal("", &borrowerID, req.LoanPurpose, req.LoanAmount)
 	if err != nil {
 		return nil, errors.New("failed to create application")
 	}
@@ -295,10 +301,78 @@ func (s *URLAService) CreateApplicationForBorrower(borrowerID int64, req CreateA
 	// This will be handled when the deal is created
 
 	return &ApplicationResponse{
-		ID:          appID,
+		ID:          dealID,
 		LoanType:    req.LoanType,
 		LoanPurpose: req.LoanPurpose,
 		LoanAmount:  req.LoanAmount,
 		Status:      "draft",
 	}, nil
+}
+
+// GetDealProgress retrieves progress for a deal
+func (s *URLAService) GetDealProgress(dealID int64) (map[string]interface{}, error) {
+	progress, err := s.dealProgressRepo.GetByDealID(dealID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]interface{})
+	result["dealId"] = progress.DealID
+	result["progressPercentage"] = progress.ProgressPercentage
+	result["lastUpdatedSection"] = nil
+	if progress.LastUpdatedSection.Valid {
+		result["lastUpdatedSection"] = progress.LastUpdatedSection.String
+	}
+	result["lastUpdatedAt"] = nil
+	if progress.LastUpdatedAt.Valid {
+		result["lastUpdatedAt"] = progress.LastUpdatedAt.Time.Format("2006-01-02T15:04:05Z07:00")
+	}
+	result["progressNotes"] = nil
+	if progress.ProgressNotes.Valid {
+		result["progressNotes"] = progress.ProgressNotes.String
+	}
+
+	// Section completion flags
+	sections := make(map[string]bool)
+	sections["section1a"] = progress.Section1aComplete
+	sections["section1b"] = progress.Section1bComplete
+	sections["section1c"] = progress.Section1cComplete
+	sections["section1d"] = progress.Section1dComplete
+	sections["section1e"] = progress.Section1eComplete
+	sections["section2a"] = progress.Section2aComplete
+	sections["section2b"] = progress.Section2bComplete
+	sections["section2c"] = progress.Section2cComplete
+	sections["section2d"] = progress.Section2dComplete
+	sections["section3"] = progress.Section3Complete
+	sections["section4"] = progress.Section4Complete
+	sections["section5"] = progress.Section5Complete
+	sections["section6"] = progress.Section6Complete
+	sections["section7"] = progress.Section7Complete
+	sections["section8"] = progress.Section8Complete
+	sections["section9"] = progress.Section9Complete
+	sections["lenderL1"] = progress.LenderL1Complete
+	sections["lenderL2"] = progress.LenderL2Complete
+	sections["lenderL3"] = progress.LenderL3Complete
+	sections["lenderL4"] = progress.LenderL4Complete
+	sections["continuation"] = progress.ContinuationComplete
+	sections["unmarriedAddendum"] = progress.UnmarriedAddendumComplete
+	result["sections"] = sections
+
+	// Get next incomplete section for resumption
+	nextSection, err := s.dealProgressRepo.GetNextIncompleteSection(dealID)
+	if err == nil {
+		result["nextIncompleteSection"] = nextSection
+	}
+
+	return result, nil
+}
+
+// UpdateDealProgressSection updates a specific section's completion status
+func (s *URLAService) UpdateDealProgressSection(dealID int64, section string, complete bool) error {
+	return s.dealProgressRepo.UpdateSection(dealID, section, complete)
+}
+
+// UpdateDealProgressNotes updates progress notes
+func (s *URLAService) UpdateDealProgressNotes(dealID int64, notes string) error {
+	return s.dealProgressRepo.UpdateNotes(dealID, notes)
 }
