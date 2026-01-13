@@ -207,3 +207,56 @@ func (h *URLAHandler) GetMyApplications(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"applications": applications})
 }
+
+// SendVerificationCode handles sending verification code via email or SMS
+func (h *URLAHandler) SendVerificationCode(c *gin.Context) {
+	var req services.SendVerificationCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	err := h.urlaService.SendVerificationCode(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Verification code sent successfully"})
+}
+
+// VerifyAndCreateBorrower handles verifying code and creating borrower account with deal
+// Returns auth tokens for seamless login
+func (h *URLAHandler) VerifyAndCreateBorrower(c *gin.Context) {
+	var req services.VerifyAndCreateBorrowerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	response, err := h.urlaService.VerifyAndCreateBorrower(req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, response)
+}
+
+// CreateBorrowerAndDealFromPreApplication handles creating a borrower and deal from pre-application data
+// DEPRECATED: Use VerifyAndCreateBorrower instead
+func (h *URLAHandler) CreateBorrowerAndDealFromPreApplication(c *gin.Context) {
+	var req services.CreateBorrowerAndDealFromPreApplicationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	response, err := h.urlaService.CreateBorrowerAndDealFromPreApplication(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, response)
+}

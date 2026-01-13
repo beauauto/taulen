@@ -21,8 +21,9 @@ func NewDealRepository() *DealRepository {
 // CreateDeal creates a new deal (mortgage application) with an associated loan
 // userID is the employee (User) managing this deal (can be NULL)
 // borrowerID can be NULL initially, set later when primary borrower is created
+// status defaults to 'Draft' if empty
 // Returns the deal ID (which is the primary identifier for an application)
-func (r *DealRepository) CreateDeal(userID string, borrowerID *int64, loanPurpose string, loanAmount float64) (int64, error) {
+func (r *DealRepository) CreateDeal(userID string, borrowerID *int64, loanPurpose string, loanAmount float64, status string) (int64, error) {
 	// Start transaction
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -40,10 +41,21 @@ func (r *DealRepository) CreateDeal(userID string, borrowerID *int64, loanPurpos
 		totalBorrowers = 1 // Will be updated when co-borrowers are added
 	}
 
-	dealQuery := `INSERT INTO deal (application_type, total_borrowers, application_date) 
-	              VALUES ($1, $2, CURRENT_DATE) RETURNING id`
+	// Default status to 'Draft' if not provided
+	if status == "" {
+		status = "Draft"
+	}
 
-	err = tx.QueryRow(dealQuery, applicationType, totalBorrowers).Scan(&dealID)
+	// Build query with optional primary_borrower_id
+	if borrowerID != nil {
+		dealQuery := `INSERT INTO deal (application_type, total_borrowers, application_date, status, primary_borrower_id) 
+		              VALUES ($1, $2, CURRENT_DATE, $3::deal_status_enum, $4) RETURNING id`
+		err = tx.QueryRow(dealQuery, applicationType, totalBorrowers, status, *borrowerID).Scan(&dealID)
+	} else {
+		dealQuery := `INSERT INTO deal (application_type, total_borrowers, application_date, status) 
+		              VALUES ($1, $2, CURRENT_DATE, $3::deal_status_enum) RETURNING id`
+		err = tx.QueryRow(dealQuery, applicationType, totalBorrowers, status).Scan(&dealID)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -140,21 +152,18 @@ func (r *DealRepository) GetDealsByUserID(userID string) (*sql.Rows, error) {
 	return r.db.Query(query)
 }
 
-// GetDealsByBorrowerID retrieves all deals for a borrower
-// Note: The new schema needs a relationship between borrower and deal
-// This might be through a deal_borrower junction table or borrower_id in deal
-// For now, this is a placeholder that needs schema update
+// GetDealsByBorrowerID retrieves all deals for a borrower, ordered by latest modification
 func (r *DealRepository) GetDealsByBorrowerID(borrowerID int64) (*sql.Rows, error) {
-	// TODO: Add borrower_id to deal table or create deal_borrower junction table
-	// The relationship between borrowers and deals needs to be defined in the schema
-	// For now, return empty result - this needs schema update
-	query := `SELECT d.id, d.loan_number, d.application_type, d.application_date, d.created_at,
-		l.loan_purpose_type, l.loan_amount_requested
+	query := `SELECT d.id, d.loan_number, d.application_type, d.application_date, d.created_at, d.status,
+		l.loan_purpose_type, l.loan_amount_requested,
+		COALESCE(dp.updated_at, d.created_at) as last_updated_at,
+		dp.progress_percentage, dp.last_updated_section
 		FROM deal d
 		LEFT JOIN loan l ON l.deal_id = d.id
-		WHERE 1=0  -- Placeholder: needs borrower-deal relationship in schema
-		ORDER BY d.created_at DESC`
-	return r.db.Query(query)
+		LEFT JOIN deal_progress dp ON dp.deal_id = d.id
+		WHERE d.primary_borrower_id = $1
+		ORDER BY COALESCE(dp.updated_at, d.created_at) DESC, d.created_at DESC`
+	return r.db.Query(query, borrowerID)
 }
 
 // ListDeals retrieves all deals with pagination

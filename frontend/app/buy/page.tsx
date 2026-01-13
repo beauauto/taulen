@@ -15,27 +15,87 @@ export default function BuyHomePage() {
     setSelectedStage(stage)
   }
 
-  const handleWizardComplete = (data: PreApplicationData) => {
-    // Store the pre-application data
-    // For now, we'll redirect to sign up/register with the data
-    // In the future, we could create a pre-application in the database
-    const queryParams = new URLSearchParams({
-      purpose: 'purchase',
-      stage: data.stage,
-      ...(data.location && { location: data.location }),
-      ...(data.estimatedPrice && { price: String(data.estimatedPrice) }),
-      ...(data.downPayment && { downPayment: String(data.downPayment) }),
-      ...(data.firstName && { firstName: data.firstName }),
-      ...(data.lastName && { lastName: data.lastName }),
-      ...(data.email && { email: data.email }),
-      ...(data.phone && { phone: data.phone }),
-    })
-    
-    // Store detailed data in localStorage for later use
-    localStorage.setItem('preApplicationData', JSON.stringify(data))
-    
-    // Redirect to registration with pre-filled data
-    router.push(`/register?redirect=${encodeURIComponent(`/applications/new?${queryParams.toString()}`)}`)
+  const handleWizardComplete = async (data: PreApplicationData) => {
+    // Validate required fields
+    if (!data.email || !data.firstName || !data.lastName || !data.phone || !data.dateOfBirth) {
+      alert('Please fill in all required fields')
+      return
+    }
+
+    if (!data.password || data.password.length < 8) {
+      alert('Password must be at least 8 characters long')
+      return
+    }
+
+    if (!data.verificationMethod) {
+      alert('Please select a verification method')
+      return
+    }
+
+    if (!data.verificationCode || data.verificationCode.length !== 6) {
+      alert('Please enter a valid 6-digit verification code')
+      return
+    }
+
+    if (!data.creditCheckConsent) {
+      alert('Please consent to the credit check to continue')
+      return
+    }
+
+    try {
+      // Import urlaApi and authUtils dynamically to avoid circular dependencies
+      const { urlaApi } = await import('@/lib/api')
+      const { authUtils } = await import('@/lib/auth')
+      const { cookieUtils } = await import('@/lib/cookies')
+      
+      // Verify code and create borrower account with deal
+      const response = await urlaApi.verifyAndCreateBorrower({
+        email: data.email,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        phone: data.phone,
+        password: data.password,
+        dateOfBirth: data.dateOfBirth,
+        address: data.currentAddress,
+        city: data.city,
+        state: data.state,
+        zipCode: data.zipCode,
+        estimatedPrice: data.estimatedPrice || 0,
+        downPayment: data.downPayment || 0,
+        loanPurpose: 'Purchase', // Default to Purchase for buy page
+        verificationCode: data.verificationCode,
+      })
+
+      const { application, accessToken, refreshToken, user, preApplicationData } = response.data
+      
+      // Store tokens and user data for seamless authentication
+      if (accessToken) {
+        authUtils.setToken(accessToken)
+        cookieUtils.setCookie('token', accessToken, 7) // 7 days
+      }
+      if (refreshToken) {
+        authUtils.setRefreshToken(refreshToken)
+        cookieUtils.setCookie('refreshToken', refreshToken, 30) // 30 days
+      }
+      if (user) {
+        authUtils.setUser(user)
+      }
+      
+      // Store pre-application data in sessionStorage for form pre-population
+      if (preApplicationData) {
+        sessionStorage.setItem('preApplicationData', JSON.stringify(preApplicationData))
+      }
+      
+      // Small delay to ensure cookies are set and auth state is updated before redirect
+      await new Promise(resolve => setTimeout(resolve, 200))
+      
+      // Use window.location.href to trigger a full page reload
+      // This ensures useAuth hook picks up the new tokens and user data
+      window.location.href = `/applications/${application.id}`
+    } catch (error: any) {
+      console.error('Failed to create application:', error)
+      alert(error.response?.data?.error || 'Failed to create application. Please try again.')
+    }
   }
 
   const handleWizardCancel = () => {

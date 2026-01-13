@@ -76,4 +76,67 @@ export const urlaApi = {
     apiClient.patch(`/urla/applications/${id}/progress/section`, { section, complete }),
   updateProgressNotes: (id: number, notes: string) =>
     apiClient.patch(`/urla/applications/${id}/progress/notes`, { notes }),
+  sendVerificationCode: (data: {
+    email: string
+    phone: string
+    verificationMethod?: 'email' | 'sms' // Optional - backend will auto-select phone when both are available
+  }) => apiClient.post('/urla/pre-application/send-verification', data),
+  verifyAndCreateBorrower: (data: {
+    email: string
+    firstName: string
+    lastName: string
+    phone: string
+    password: string
+    dateOfBirth: string
+    address?: string
+    city?: string
+    state?: string
+    zipCode?: string
+    estimatedPrice?: number
+    downPayment?: number
+    loanPurpose: string
+    verificationCode: string
+  }) => apiClient.post<{
+    application: {
+      id: number
+      loanType: string
+      loanPurpose: string
+      loanAmount: number
+      status: string
+    }
+    accessToken: string
+    refreshToken: string
+    user: {
+      id: string
+      email: string
+      firstName: string
+      lastName: string
+      userType: string
+    }
+    preApplicationData?: {
+      firstName: string
+      lastName: string
+      email: string
+      phone: string
+      dateOfBirth: string
+      address: string
+      city: string
+      state: string
+      zipCode: string
+    }
+  }>('/urla/pre-application/verify-and-create', data),
+  createBorrowerAndDealFromPreApplication: (data: {
+    email: string
+    firstName: string
+    lastName: string
+    phone: string
+    dateOfBirth: string
+    address?: string
+    city?: string
+    state?: string
+    zipCode?: string
+    estimatedPrice?: number
+    downPayment?: number
+    loanPurpose: string
+  }) => apiClient.post('/urla/pre-application/complete', data),
 }

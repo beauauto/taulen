@@ -18,6 +18,8 @@ type Config struct {
 	CORS     CORSConfig
 	FileUpload FileUploadConfig
 	Logging  LoggingConfig
+	Twilio   TwilioConfig
+	SMTP     SMTPConfig
 }
 
 // ServerConfig holds server-related configuration
@@ -90,6 +92,22 @@ type LoggingConfig struct {
 	Format string // json, text
 }
 
+// TwilioConfig holds Twilio SMS configuration
+type TwilioConfig struct {
+	AccountSID string
+	AuthToken  string
+	FromPhone  string
+}
+
+// SMTPConfig holds SMTP email configuration
+type SMTPConfig struct {
+	Host     string
+	Port     string
+	User     string
+	Password string
+	FromEmail string
+}
+
 // Load loads configuration from environment variables using Viper
 func Load() (*Config, error) {
 	// Load .env file first (if it exists) using godotenv
@@ -145,6 +163,18 @@ func Load() (*Config, error) {
 			Level:  viper.GetString("logging.level"),
 			Format: viper.GetString("logging.format"),
 		},
+		Twilio: TwilioConfig{
+			AccountSID: viper.GetString("twilio.account_sid"),
+			AuthToken:  viper.GetString("twilio.auth_token"),
+			FromPhone:  viper.GetString("twilio.from_phone"),
+		},
+		SMTP: SMTPConfig{
+			Host:     viper.GetString("smtp.host"),
+			Port:     viper.GetString("smtp.port"),
+			User:     viper.GetString("smtp.user"),
+			Password: viper.GetString("smtp.password"),
+			FromEmail: viper.GetString("smtp.from_email"),
+		},
 	}
 
 	// Validate required configuration
@@ -195,6 +225,18 @@ func setDefaults() {
 	// Logging defaults
 	viper.SetDefault("logging.level", "info")
 	viper.SetDefault("logging.format", "text")
+
+	// Twilio defaults
+	viper.SetDefault("twilio.account_sid", "")
+	viper.SetDefault("twilio.auth_token", "")
+	viper.SetDefault("twilio.from_phone", "")
+
+	// SMTP defaults
+	viper.SetDefault("smtp.host", "smtp.gmail.com")
+	viper.SetDefault("smtp.port", "587")
+	viper.SetDefault("smtp.user", "")
+	viper.SetDefault("smtp.password", "")
+	viper.SetDefault("smtp.from_email", "noreply@taulen.com")
 }
 
 // parseStringSlice parses a comma-separated string into a slice

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"time"
 	"taulen/backend/internal/database"
 )
 
@@ -162,6 +163,132 @@ func (r *BorrowerRepository) Create(email, passwordHash, firstName, lastName str
 		return nil, err
 	}
 	return borrower, nil
+}
+
+// CreateFromPreApplication creates a borrower from pre-application data (without password)
+// This is used when a borrower completes the pre-application wizard
+// They will set a password later when they register/login
+func (r *BorrowerRepository) CreateFromPreApplication(email, firstName, lastName, phone, dateOfBirth, address, city, state, zipCode string) (*Borrower, error) {
+	query := `INSERT INTO borrower (email_address, first_name, last_name, mobile_phone, birth_date, created_at, updated_at) 
+	          VALUES ($1, $2, $3, $4, $5::date, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) 
+	          RETURNING id, email_address, password_hash, email_verified, email_verification_token, 
+	          email_verification_expires_at, password_reset_token, password_reset_expires_at, 
+	          last_password_change_at, mfa_enabled, mfa_secret, mfa_backup_codes, mfa_setup_at, 
+	          mfa_verified_at, last_login_at, failed_login_attempts, account_locked_until,
+	          first_name, middle_name, last_name, suffix, taxpayer_identifier_type, 
+	          taxpayer_identifier_value, birth_date, citizenship_residency_type, marital_status, 
+	          dependent_count, dependent_ages, home_phone, mobile_phone, work_phone, 
+	          work_phone_extension, created_at, updated_at`
+	
+	var birthDate sql.NullTime
+	if dateOfBirth != "" {
+		birthDate.Valid = true
+		// Parse date string (assuming format YYYY-MM-DD)
+		if t, err := time.Parse("2006-01-02", dateOfBirth); err == nil {
+			birthDate.Time = t
+		}
+	}
+	
+	row := r.db.QueryRow(query, email, firstName, lastName, phone, birthDate)
+
+	borrower := &Borrower{}
+	err := row.Scan(
+		&borrower.ID, &borrower.EmailAddress, &borrower.PasswordHash,
+		&borrower.EmailVerified, &borrower.EmailVerificationToken, &borrower.EmailVerificationExpiresAt,
+		&borrower.PasswordResetToken, &borrower.PasswordResetExpiresAt, &borrower.LastPasswordChangeAt,
+		&borrower.MFAEnabled, &borrower.MFASecret, &borrower.MFABackupCodes, &borrower.MFASetupAt,
+		&borrower.MFAVerifiedAt, &borrower.LastLoginAt, &borrower.FailedLoginAttempts, &borrower.AccountLockedUntil,
+		&borrower.FirstName, &borrower.MiddleName, &borrower.LastName, &borrower.Suffix,
+		&borrower.TaxpayerIDType, &borrower.TaxpayerIDValue, &borrower.BirthDate,
+		&borrower.CitizenshipType, &borrower.MaritalStatus, &borrower.DependentCount,
+		&borrower.DependentAges, &borrower.HomePhone, &borrower.MobilePhone,
+		&borrower.WorkPhone, &borrower.WorkPhoneExt, &borrower.CreatedAt, &borrower.UpdatedAt,
+	)
+	if err != nil {
+		// Check for unique constraint violation
+		errStr := err.Error()
+		if strings.Contains(errStr, "duplicate key") || strings.Contains(errStr, "unique constraint") {
+			if strings.Contains(errStr, "email") || strings.Contains(strings.ToLower(errStr), "email") {
+				return nil, errors.New("borrower with this email already exists")
+			}
+		}
+		return nil, err
+	}
+	return borrower, nil
+}
+
+// SetVerificationCode stores a verification code for a borrower
+func (r *BorrowerRepository) SetVerificationCode(email, code, method string, expiresAt time.Time) error {
+	query := `UPDATE borrower 
+	          SET verification_code = $1, 
+	              verification_code_expires_at = $2,
+	              verification_method = $3,
+	              updated_at = CURRENT_TIMESTAMP
+	          WHERE LOWER(email_address) = LOWER($4) AND email_address IS NOT NULL`
+	
+	_, err := r.db.Exec(query, code, expiresAt, method, email)
+	return err
+}
+
+// VerifyCode checks if a verification code is valid for a borrower
+func (r *BorrowerRepository) VerifyCode(email, code string) (bool, error) {
+	query := `SELECT verification_code, verification_code_expires_at 
+	          FROM borrower 
+	          WHERE LOWER(email_address) = LOWER($1) 
+	          AND email_address IS NOT NULL
+	          AND verification_code = $2
+	          AND verification_code_expires_at > CURRENT_TIMESTAMP`
+	
+	var storedCode sql.NullString
+	var expiresAt sql.NullTime
+	
+	err := r.db.QueryRow(query, email, code).Scan(&storedCode, &expiresAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	
+	return storedCode.Valid && storedCode.String == code, nil
+}
+
+// ClearVerificationCode clears the verification code after successful verification
+func (r *BorrowerRepository) ClearVerificationCode(email string) error {
+	query := `UPDATE borrower 
+	          SET verification_code = NULL, 
+	              verification_code_expires_at = NULL,
+	              verification_method = NULL,
+	              email_verified = TRUE,
+	              updated_at = CURRENT_TIMESTAMP
+	          WHERE LOWER(email_address) = LOWER($1) AND email_address IS NOT NULL`
+	
+	_, err := r.db.Exec(query, email)
+	return err
+}
+
+// UpdatePassword updates a borrower's password
+func (r *BorrowerRepository) UpdatePassword(borrowerID int64, passwordHash string) error {
+	query := `UPDATE borrower 
+	          SET password_hash = $1,
+	              last_password_change_at = CURRENT_TIMESTAMP,
+	              updated_at = CURRENT_TIMESTAMP
+	          WHERE id = $2`
+	
+	_, err := r.db.Exec(query, passwordHash, borrowerID)
+	return err
+}
+
+// UpdateName updates a borrower's name
+func (r *BorrowerRepository) UpdateName(borrowerID int64, firstName, lastName string) error {
+	query := `UPDATE borrower 
+	          SET first_name = $1,
+	              last_name = $2,
+	              updated_at = CURRENT_TIMESTAMP
+	          WHERE id = $3`
+	
+	_, err := r.db.Exec(query, firstName, lastName, borrowerID)
+	return err
 }
 
 // Note: deal_id has been removed from borrower table

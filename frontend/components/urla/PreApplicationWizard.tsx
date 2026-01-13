@@ -19,6 +19,9 @@ export interface PreApplicationData {
   city?: string
   state?: string
   zipCode?: string
+  password?: string
+  verificationMethod?: 'email' | 'sms'
+  verificationCode?: string
   creditCheckConsent?: boolean
 }
 
@@ -147,6 +150,34 @@ export function PreApplicationWizard({ stage, onComplete, onCancel }: PreApplica
       ],
     },
     {
+      id: 'account',
+      title: 'Create Account',
+      description: 'Choose a password for your account. We will send a verification code to your phone.',
+      fields: [
+        {
+          field: 'password' as keyof PreApplicationData,
+          label: 'Password',
+          type: 'password',
+          placeholder: 'Enter a secure password',
+          required: true,
+        },
+      ],
+    },
+    {
+      id: 'verification',
+      title: 'Verify Your Identity',
+      description: 'Enter the verification code sent to your email or phone',
+      fields: [
+        {
+          field: 'verificationCode' as keyof PreApplicationData,
+          label: 'Verification Code',
+          type: 'text',
+          placeholder: 'Enter 6-digit code',
+          required: true,
+        },
+      ],
+    },
+    {
       id: 'creditConsent',
       title: 'Credit Check Consent',
       description: 'We need your consent to run a credit check as part of the pre-approval process',
@@ -165,7 +196,30 @@ export function PreApplicationWizard({ stage, onComplete, onCancel }: PreApplica
   const currentStepData = steps[currentStep]
   const progress = ((currentStep + 1) / steps.length) * 100
 
-  const handleNext = () => {
+  const handleNext = async () => {
+    // If moving from account step to verification step, send verification code
+    // Automatically use phone (SMS) if both email and phone are available, otherwise use available method
+    if (currentStepData.id === 'account' && currentStep < steps.length - 1) {
+      if (!formData.email || !formData.phone) {
+        alert('Please fill in all required fields')
+        return
+      }
+      
+      try {
+        const { urlaApi } = await import('@/lib/api')
+        // Don't send verificationMethod - backend will auto-select phone (SMS) when both are available
+        await urlaApi.sendVerificationCode({
+          email: formData.email,
+          phone: formData.phone,
+          // verificationMethod is optional - backend will prefer phone when both are available
+        })
+        setCurrentStep(currentStep + 1)
+      } catch (error: any) {
+        alert(error.response?.data?.error || 'Failed to send verification code')
+      }
+      return
+    }
+    
     if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1)
     } else {
@@ -221,10 +275,24 @@ export function PreApplicationWizard({ stage, onComplete, onCancel }: PreApplica
   }
 
   const isStepValid = () => {
+    // Special validation for account step
+    if (currentStepData.id === 'account') {
+      const hasPassword = formData.password && formData.password.length >= 8
+      return hasPassword
+    }
+    
+    // Special validation for verification step
+    if (currentStepData.id === 'verification') {
+      return formData.verificationCode && formData.verificationCode.length === 6
+    }
+    
     return currentStepData.fields.every((fieldDef) => {
       const value = formData[fieldDef.field]
       if (fieldDef.type === 'checkbox') {
         return value === true
+      }
+      if (fieldDef.type === 'radio') {
+        return value !== undefined && value !== null
       }
       return value !== undefined && value !== null && String(value).trim() !== ''
     })
@@ -289,6 +357,77 @@ export function PreApplicationWizard({ stage, onComplete, onCancel }: PreApplica
                     I consent to the credit check and agree to the terms above
                   </span>
                 </label>
+              </div>
+            ) : currentStepData.id === 'account' ? (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                    Password <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={formData.password || ''}
+                    onChange={(e) => handleInputChange('password', e.target.value)}
+                    placeholder="Enter a secure password (min. 8 characters)"
+                    className="text-base py-3"
+                    required
+                    autoFocus
+                  />
+                  <p className="text-xs text-gray-500">
+                    Must be at least 8 characters long
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-sm text-gray-700 mb-2">
+                      <strong>Two-Factor Authentication</strong>
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      We'll send a verification code to your phone number: <strong>{formData.phone || 'your phone'}</strong>
+                    </p>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Phone verification is required for account security. If you don't receive the code, please check your phone number.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : currentStepData.id === 'verification' ? (
+              <div className="space-y-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm text-gray-700 mb-2">
+                    We've sent a 6-digit verification code to:
+                  </p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {formData.phone || 'your phone'}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Please enter the code below to verify your identity.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="verificationCode" className="block text-sm font-medium text-gray-700">
+                    Verification Code <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    id="verificationCode"
+                    type="text"
+                    value={formData.verificationCode || ''}
+                    onChange={(e) => {
+                      // Only allow digits, max 6 characters
+                      const value = e.target.value.replace(/\D/g, '').slice(0, 6)
+                      handleInputChange('verificationCode', value)
+                    }}
+                    placeholder="000000"
+                    className="text-base py-3 text-center text-2xl tracking-widest"
+                    required
+                    autoFocus
+                    maxLength={6}
+                  />
+                  <p className="text-xs text-gray-500 text-center">
+                    Didn't receive the code? <button type="button" className="text-indigo-600 hover:underline">Resend</button>
+                  </p>
+                </div>
               </div>
             ) : (
               <div className="space-y-4">

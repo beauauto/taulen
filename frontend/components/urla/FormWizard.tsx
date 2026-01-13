@@ -62,19 +62,31 @@ export function FormWizard({ applicationId, initialData }: FormWizardProps) {
   const router = useRouter()
   const { user } = useAuth()
   const [currentStep, setCurrentStep] = useState(0)
-  const [formData, setFormData] = useState<URLAFormData>({
-    borrower: {
-      firstName: user?.firstName || '',
-      lastName: user?.lastName || '',
-      ssn: '',
-      dateOfBirth: '',
-      maritalStatus: '',
-      dependentsCount: 0,
-      citizenshipStatus: '',
-      email: user?.email || '',
-    },
-    ...initialData,
-  })
+  
+  // Merge initial data with user data and pre-populated data
+  const getInitialFormData = (): URLAFormData => {
+    const baseData: URLAFormData = {
+      borrower: {
+        firstName: initialData?.borrower?.firstName || user?.firstName || '',
+        lastName: initialData?.borrower?.lastName || user?.lastName || '',
+        ssn: initialData?.borrower?.ssn || '',
+        dateOfBirth: initialData?.borrower?.dateOfBirth || '',
+        maritalStatus: initialData?.borrower?.maritalStatus || '',
+        dependentsCount: initialData?.borrower?.dependentsCount || 0,
+        citizenshipStatus: initialData?.borrower?.citizenshipStatus || '',
+        email: initialData?.borrower?.email || user?.email || '',
+        phone: initialData?.borrower?.phone || '',
+      },
+      property: initialData?.property || undefined,
+      employment: initialData?.employment,
+      income: initialData?.income,
+      assets: initialData?.assets,
+      liabilities: initialData?.liabilities,
+    }
+    return baseData
+  }
+  
+  const [formData, setFormData] = useState<URLAFormData>(getInitialFormData())
   const [isSaving, setIsSaving] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [progressData, setProgressData] = useState<{
@@ -83,6 +95,24 @@ export function FormWizard({ applicationId, initialData }: FormWizardProps) {
     nextIncompleteSection?: string
   } | null>(null)
   const [isLoadingProgress, setIsLoadingProgress] = useState(false)
+
+  // Update form data when user or initialData changes
+  useEffect(() => {
+    if (user || initialData) {
+      setFormData((prev) => ({
+        ...prev,
+        borrower: {
+          ...prev.borrower,
+          firstName: initialData?.borrower?.firstName || user?.firstName || prev.borrower.firstName,
+          lastName: initialData?.borrower?.lastName || user?.lastName || prev.borrower.lastName,
+          email: initialData?.borrower?.email || user?.email || prev.borrower.email,
+          dateOfBirth: initialData?.borrower?.dateOfBirth || prev.borrower.dateOfBirth,
+          phone: initialData?.borrower?.phone || prev.borrower.phone,
+        },
+        property: initialData?.property || prev.property,
+      }))
+    }
+  }, [user, initialData])
 
   // Load progress on mount and when applicationId changes
   useEffect(() => {

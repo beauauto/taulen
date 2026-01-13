@@ -3,7 +3,10 @@ package services
 import (
 	"database/sql"
 	"errors"
+	"time"
+	"taulen/backend/internal/config"
 	"taulen/backend/internal/repositories"
+	"taulen/backend/internal/utils"
 )
 
 // URLAService handles URLA application business logic
@@ -13,15 +16,19 @@ type URLAService struct {
 	dealProgressRepo *repositories.DealProgressRepository
 	userRepo         *repositories.UserRepository
 	borrowerRepo     *repositories.BorrowerRepository
+	jwtManager       *utils.JWTManager
+	cfg              *config.Config
 }
 
 // NewURLAService creates a new URLA service
-func NewURLAService() *URLAService {
+func NewURLAService(cfg *config.Config) *URLAService {
 	return &URLAService{
 		dealRepo:         repositories.NewDealRepository(),
 		dealProgressRepo: repositories.NewDealProgressRepository(),
 		userRepo:         repositories.NewUserRepository(),
 		borrowerRepo:     repositories.NewBorrowerRepository(),
+		jwtManager:       utils.NewJWTManager(&cfg.JWT),
+		cfg:              cfg,
 	}
 }
 
@@ -34,13 +41,46 @@ type CreateApplicationRequest struct {
 
 // ApplicationResponse represents an application in API responses
 type ApplicationResponse struct {
-	ID              int64   `json:"id"`
-	LoanType        string  `json:"loanType"`
-	LoanPurpose     string  `json:"loanPurpose"`
-	LoanAmount      float64 `json:"loanAmount"`
-	Status          string  `json:"status"`
-	CreatedDate     string  `json:"createdDate"`
-	LastUpdatedDate string  `json:"lastUpdatedDate"`
+	ID                  int64   `json:"id"`
+	LoanType            string  `json:"loanType"`
+	LoanPurpose         string  `json:"loanPurpose"`
+	LoanAmount          float64 `json:"loanAmount"`
+	Status              string  `json:"status"`
+	CreatedDate         string  `json:"createdDate"`
+	LastUpdatedDate     string  `json:"lastUpdatedDate"`
+	ProgressPercentage  *int    `json:"progressPercentage,omitempty"`
+	LastUpdatedSection    *string `json:"lastUpdatedSection,omitempty"`
+}
+
+// VerifyAndCreateBorrowerResponse represents the response after verification and account creation
+type VerifyAndCreateBorrowerResponse struct {
+	Application        ApplicationResponse        `json:"application"`
+	AccessToken        string                     `json:"accessToken"`
+	RefreshToken       string                     `json:"refreshToken"`
+	User               AuthUserResponse          `json:"user"`
+	PreApplicationData *PreApplicationDataResponse `json:"preApplicationData,omitempty"`
+}
+
+// AuthUserResponse represents user information (alias to avoid conflict with auth_service.UserResponse)
+type AuthUserResponse struct {
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+	UserType  string `json:"userType"`
+}
+
+// PreApplicationDataResponse contains pre-application data for form pre-population
+type PreApplicationDataResponse struct {
+	FirstName   string `json:"firstName"`
+	LastName    string `json:"lastName"`
+	Email       string `json:"email"`
+	Phone       string `json:"phone"`
+	DateOfBirth string `json:"dateOfBirth"`
+	Address     string `json:"address"`
+	City        string `json:"city"`
+	State       string `json:"state"`
+	ZipCode     string `json:"zipCode"`
 }
 
 // CreateApplication creates a new URLA application
@@ -55,7 +95,7 @@ func (s *URLAService) CreateApplication(userID string, req CreateApplicationRequ
 
 	// Create deal (application) with UserID (employee) and NULL BorrowerID (set later)
 	// Note: loanType is not used in new schema, only loanPurpose
-	dealID, err := s.dealRepo.CreateDeal(userID, nil, req.LoanPurpose, req.LoanAmount)
+	dealID, err := s.dealRepo.CreateDeal(userID, nil, req.LoanPurpose, req.LoanAmount, "Draft")
 	if err != nil {
 		return nil, errors.New("failed to create application")
 	}
@@ -221,31 +261,28 @@ func (s *URLAService) GetApplicationsByBorrower(borrowerID int64) ([]Application
 	var applications []ApplicationResponse
 	for rows.Next() {
 		var app struct {
-			ID              int64
-			ApplicantID     sql.NullInt64
-			UserID          sql.NullString
-			ApplicationDate sql.NullTime
-			LoanType        sql.NullString
-			LoanPurpose     sql.NullString
-			LoanAmount      sql.NullFloat64
-			Status          sql.NullString
-			CreatedDate     sql.NullTime
-			LastUpdatedDate sql.NullTime
+			ID                int64
+			LoanNumber        sql.NullString
+			ApplicationType   sql.NullString
+			ApplicationDate   sql.NullTime
+			CreatedAt         sql.NullTime
+			Status            sql.NullString
+			LoanPurpose       sql.NullString
+			LoanAmount        sql.NullFloat64
+			LastUpdatedAt     sql.NullTime
+			ProgressPercentage sql.NullInt64
+			LastUpdatedSection sql.NullString
 		}
 
 		err := rows.Scan(
-			&app.ID, &app.ApplicantID, &app.UserID, &app.ApplicationDate,
-			&app.LoanType, &app.LoanPurpose, &app.LoanAmount, &app.Status,
-			&app.CreatedDate, &app.LastUpdatedDate,
+			&app.ID, &app.LoanNumber, &app.ApplicationType, &app.ApplicationDate,
+			&app.CreatedAt, &app.Status, &app.LoanPurpose, &app.LoanAmount,
+			&app.LastUpdatedAt, &app.ProgressPercentage, &app.LastUpdatedSection,
 		)
 		if err != nil {
 			continue
 		}
 
-		loanType := ""
-		if app.LoanType.Valid {
-			loanType = app.LoanType.String
-		}
 		loanPurpose := ""
 		if app.LoanPurpose.Valid {
 			loanPurpose = app.LoanPurpose.String
@@ -254,27 +291,41 @@ func (s *URLAService) GetApplicationsByBorrower(borrowerID int64) ([]Application
 		if app.LoanAmount.Valid {
 			loanAmount = app.LoanAmount.Float64
 		}
-		status := ""
+		status := "Draft"
 		if app.Status.Valid {
 			status = app.Status.String
 		}
 		createdDate := ""
-		if app.CreatedDate.Valid {
-			createdDate = app.CreatedDate.Time.Format("2006-01-02T15:04:05Z07:00")
+		if app.CreatedAt.Valid {
+			createdDate = app.CreatedAt.Time.Format("2006-01-02T15:04:05Z07:00")
 		}
 		lastUpdatedDate := ""
-		if app.LastUpdatedDate.Valid {
-			lastUpdatedDate = app.LastUpdatedDate.Time.Format("2006-01-02T15:04:05Z07:00")
+		if app.LastUpdatedAt.Valid {
+			lastUpdatedDate = app.LastUpdatedAt.Time.Format("2006-01-02T15:04:05Z07:00")
+		}
+		
+		var progressPercentage *int
+		if app.ProgressPercentage.Valid {
+			pct := int(app.ProgressPercentage.Int64)
+			progressPercentage = &pct
+		}
+		
+		var lastUpdatedSection *string
+		if app.LastUpdatedSection.Valid {
+			section := app.LastUpdatedSection.String
+			lastUpdatedSection = &section
 		}
 
 		applications = append(applications, ApplicationResponse{
-			ID:              app.ID,
-			LoanType:        loanType,
-			LoanPurpose:     loanPurpose,
-			LoanAmount:      loanAmount,
-			Status:          status,
-			CreatedDate:     createdDate,
-			LastUpdatedDate: lastUpdatedDate,
+			ID:                 app.ID,
+			LoanType:           "Conventional", // Default, can be updated later
+			LoanPurpose:        loanPurpose,
+			LoanAmount:         loanAmount,
+			Status:             status,
+			CreatedDate:        createdDate,
+			LastUpdatedDate:    lastUpdatedDate,
+			ProgressPercentage: progressPercentage,
+			LastUpdatedSection: lastUpdatedSection,
 		})
 	}
 
@@ -292,7 +343,7 @@ func (s *URLAService) CreateApplicationForBorrower(borrowerID int64, req CreateA
 
 	// Create deal (application) - UserID can be NULL if no employee assigned yet
 	// Note: The new schema uses deal/loan instead of loan_application
-	dealID, err := s.dealRepo.CreateDeal("", &borrowerID, req.LoanPurpose, req.LoanAmount)
+	dealID, err := s.dealRepo.CreateDeal("", &borrowerID, req.LoanPurpose, req.LoanAmount, "Draft")
 	if err != nil {
 		return nil, errors.New("failed to create application")
 	}
@@ -306,6 +357,310 @@ func (s *URLAService) CreateApplicationForBorrower(borrowerID int64, req CreateA
 		LoanPurpose: req.LoanPurpose,
 		LoanAmount:  req.LoanAmount,
 		Status:      "draft",
+	}, nil
+}
+
+// SendVerificationCodeRequest represents a request to send verification code
+// Phone is required. VerificationMethod is optional - if not provided, phone (SMS) will be used if available, otherwise email
+type SendVerificationCodeRequest struct {
+	Email             string `json:"email" binding:"required,email"`
+	Phone             string `json:"phone" binding:"required"` // Phone is required for 2FA
+	VerificationMethod string `json:"verificationMethod,omitempty"` // Optional: "email" or "sms". Auto-selected if not provided
+}
+
+// VerifyAndCreateBorrowerRequest represents pre-application data with verification
+type VerifyAndCreateBorrowerRequest struct {
+	Email          string  `json:"email" binding:"required,email"`
+	FirstName      string  `json:"firstName" binding:"required"`
+	LastName       string  `json:"lastName" binding:"required"`
+	Phone          string  `json:"phone" binding:"required"`
+	Password       string  `json:"password" binding:"required,min=8"`
+	DateOfBirth    string  `json:"dateOfBirth" binding:"required"`
+	Address        string  `json:"address"`
+	City           string  `json:"city"`
+	State          string  `json:"state"`
+	ZipCode        string  `json:"zipCode"`
+	EstimatedPrice float64 `json:"estimatedPrice"`
+	DownPayment    float64 `json:"downPayment"`
+	LoanPurpose    string  `json:"loanPurpose" binding:"required"`
+	VerificationCode string `json:"verificationCode" binding:"required,len=6"`
+}
+
+// CreateBorrowerAndDealFromPreApplicationRequest represents pre-application data (deprecated)
+type CreateBorrowerAndDealFromPreApplicationRequest struct {
+	Email          string  `json:"email" binding:"required,email"`
+	FirstName      string  `json:"firstName" binding:"required"`
+	LastName       string  `json:"lastName" binding:"required"`
+	Phone          string  `json:"phone" binding:"required"`
+	DateOfBirth    string  `json:"dateOfBirth" binding:"required"`
+	Address        string  `json:"address"`
+	City           string  `json:"city"`
+	State          string  `json:"state"`
+	ZipCode        string  `json:"zipCode"`
+	EstimatedPrice float64 `json:"estimatedPrice"`
+	DownPayment    float64 `json:"downPayment"`
+	LoanPurpose    string  `json:"loanPurpose" binding:"required"`
+}
+
+// SendVerificationCode sends a verification code via email or SMS
+// Automatically selects phone if both email and phone are available (phone is preferred)
+// Uses email if only email is available, phone if only phone is available
+func (s *URLAService) SendVerificationCode(req SendVerificationCodeRequest) error {
+	emailService := NewEmailService(s.cfg)
+	smsService := NewSMSService(s.cfg)
+	
+	// Determine verification method automatically:
+	// 1. If both email and phone are available, prefer phone (SMS)
+	// 2. If only phone is available, use phone (SMS)
+	// 3. If only email is available, use email
+	verificationMethod := req.VerificationMethod
+	if verificationMethod == "" {
+		if req.Phone != "" {
+			verificationMethod = "sms" // Prefer phone when available
+		} else if req.Email != "" {
+			verificationMethod = "email"
+		} else {
+			return errors.New("either email or phone must be provided")
+		}
+	}
+	
+	// Validate phone is provided if SMS is selected
+	if verificationMethod == "sms" && req.Phone == "" {
+		return errors.New("phone number is required for SMS verification")
+	}
+	
+	// Validate email is provided if email is selected
+	if verificationMethod == "email" && req.Email == "" {
+		return errors.New("email is required for email verification")
+	}
+	
+	// Generate 6-digit verification code
+	code, err := utils.GenerateVerificationCode()
+	if err != nil {
+		return errors.New("failed to generate verification code")
+	}
+	
+	// Store verification code (expires in 10 minutes)
+	expiresAt := time.Now().Add(10 * time.Minute)
+	
+	// Check if borrower exists, if not create a temporary record
+	existingBorrower, err := s.borrowerRepo.GetByEmail(req.Email)
+	if err != nil && err != sql.ErrNoRows {
+		return errors.New("failed to check if borrower exists")
+	}
+	
+	if existingBorrower == nil {
+		// Create temporary borrower record (without password)
+		_, err = s.borrowerRepo.CreateFromPreApplication(
+			req.Email,
+			"", // First name - will be set later
+			"", // Last name - will be set later
+			req.Phone,
+			"", // Date of birth - will be set later
+			"", "", "", "", // Address fields
+		)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			// If it's not a "not found" error, it might be a duplicate - continue
+			if !errors.Is(err, sql.ErrNoRows) {
+				// Try to update existing record instead
+			}
+		}
+	}
+	
+	// Store verification code
+	err = s.borrowerRepo.SetVerificationCode(req.Email, code, verificationMethod, expiresAt)
+	if err != nil {
+		return errors.New("failed to store verification code")
+	}
+	
+	// Send verification code via selected method
+	if verificationMethod == "email" {
+		err = emailService.SendVerificationCode(req.Email, code)
+	} else {
+		err = smsService.SendVerificationCode(req.Phone, code)
+	}
+	
+	if err != nil {
+		return errors.New("failed to send verification code")
+	}
+	
+	return nil
+}
+
+// VerifyAndCreateBorrower verifies the code and creates borrower account with deal
+// Returns auth tokens and application data for seamless login
+func (s *URLAService) VerifyAndCreateBorrower(req VerifyAndCreateBorrowerRequest) (*VerifyAndCreateBorrowerResponse, error) {
+	// Verify the code
+	valid, err := s.borrowerRepo.VerifyCode(req.Email, req.VerificationCode)
+	if err != nil {
+		return nil, errors.New("failed to verify code")
+	}
+	if !valid {
+		return nil, errors.New("invalid or expired verification code")
+	}
+	
+	// Hash password
+	passwordHash, err := utils.HashPassword(req.Password)
+	if err != nil {
+		return nil, errors.New("failed to hash password")
+	}
+	
+	// Check if borrower already exists
+	existingBorrower, err := s.borrowerRepo.GetByEmail(req.Email)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, errors.New("failed to check if borrower exists")
+	}
+	
+	var borrower *repositories.Borrower
+	var borrowerID int64
+	if existingBorrower != nil {
+		// Borrower exists (from pre-application step), update with password
+		borrowerID = existingBorrower.ID
+		// Update password if it doesn't exist
+		if !existingBorrower.PasswordHash.Valid || existingBorrower.PasswordHash.String == "" {
+			err = s.borrowerRepo.UpdatePassword(borrowerID, passwordHash)
+			if err != nil {
+				return nil, errors.New("failed to update borrower password: " + err.Error())
+			}
+		}
+		// Update name if needed
+		if existingBorrower.FirstName != req.FirstName || existingBorrower.LastName != req.LastName {
+			err = s.borrowerRepo.UpdateName(borrowerID, req.FirstName, req.LastName)
+			if err != nil {
+				// Log but don't fail
+			}
+		}
+		// Fetch updated borrower
+		borrower, err = s.borrowerRepo.GetByID(borrowerID)
+		if err != nil {
+			return nil, errors.New("failed to fetch borrower: " + err.Error())
+		}
+	} else {
+		// Create new borrower with password
+		newBorrower, err := s.borrowerRepo.Create(req.Email, passwordHash, req.FirstName, req.LastName)
+		if err != nil {
+			return nil, errors.New("failed to create borrower: " + err.Error())
+		}
+		borrower = newBorrower
+		borrowerID = newBorrower.ID
+	}
+	
+	// Clear verification code
+	err = s.borrowerRepo.ClearVerificationCode(req.Email)
+	if err != nil {
+		// Log but don't fail
+	}
+	
+	// Generate JWT tokens for seamless login
+	borrowerIDStr := utils.Int64ToString(borrowerID)
+	email := ""
+	if borrower.EmailAddress.Valid {
+		email = borrower.EmailAddress.String
+	}
+	
+	accessToken, err := s.jwtManager.GenerateAccessToken(borrowerIDStr, email)
+	if err != nil {
+		return nil, errors.New("failed to generate access token")
+	}
+	
+	refreshToken, err := s.jwtManager.GenerateRefreshToken(borrowerIDStr, email)
+	if err != nil {
+		return nil, errors.New("failed to generate refresh token")
+	}
+	
+	// Calculate loan amount
+	loanAmount := req.EstimatedPrice - req.DownPayment
+	if loanAmount <= 0 {
+		loanAmount = req.EstimatedPrice
+	}
+	
+	// Create deal in draft status
+	dealID, err := s.dealRepo.CreateDeal("", &borrowerID, req.LoanPurpose, loanAmount, "Draft")
+	if err != nil {
+		return nil, errors.New("failed to create application")
+	}
+	
+	return &VerifyAndCreateBorrowerResponse{
+		Application: ApplicationResponse{
+			ID:          dealID,
+			LoanType:    "Conventional",
+			LoanPurpose: req.LoanPurpose,
+			LoanAmount:  loanAmount,
+			Status:      "Draft",
+		},
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		User: AuthUserResponse{
+			ID:        borrowerIDStr,
+			Email:     email,
+			FirstName: borrower.FirstName,
+			LastName:  borrower.LastName,
+			UserType:  "applicant",
+		},
+		PreApplicationData: &PreApplicationDataResponse{
+			FirstName:   req.FirstName,
+			LastName:    req.LastName,
+			Email:       req.Email,
+			Phone:       req.Phone,
+			DateOfBirth: req.DateOfBirth,
+			Address:     req.Address,
+			City:        req.City,
+			State:       req.State,
+			ZipCode:     req.ZipCode,
+		},
+	}, nil
+}
+
+// CreateBorrowerAndDealFromPreApplication creates a borrower and deal from pre-application data
+// DEPRECATED: Use VerifyAndCreateBorrower instead
+func (s *URLAService) CreateBorrowerAndDealFromPreApplication(req CreateBorrowerAndDealFromPreApplicationRequest) (*ApplicationResponse, error) {
+	// Check if borrower already exists by email
+	existingBorrower, err := s.borrowerRepo.GetByEmail(req.Email)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, errors.New("failed to check if borrower exists")
+	}
+
+	var borrowerID int64
+	if existingBorrower != nil {
+		// Borrower already exists, use existing ID
+		borrowerID = existingBorrower.ID
+	} else {
+		// Create new borrower from pre-application data
+		borrower, err := s.borrowerRepo.CreateFromPreApplication(
+			req.Email,
+			req.FirstName,
+			req.LastName,
+			req.Phone,
+			req.DateOfBirth,
+			req.Address,
+			req.City,
+			req.State,
+			req.ZipCode,
+		)
+		if err != nil {
+			return nil, errors.New("failed to create borrower: " + err.Error())
+		}
+		borrowerID = borrower.ID
+	}
+
+	// Calculate loan amount (estimated price - down payment)
+	loanAmount := req.EstimatedPrice - req.DownPayment
+	if loanAmount <= 0 {
+		loanAmount = req.EstimatedPrice // Fallback to full price if down payment >= price
+	}
+
+	// Create deal in draft status
+	dealID, err := s.dealRepo.CreateDeal("", &borrowerID, req.LoanPurpose, loanAmount, "Draft")
+	if err != nil {
+		return nil, errors.New("failed to create application")
+	}
+
+	return &ApplicationResponse{
+		ID:          dealID,
+		LoanType:    "Conventional", // Default, can be updated later
+		LoanPurpose: req.LoanPurpose,
+		LoanAmount:  loanAmount,
+		Status:      "Draft",
 	}, nil
 }
 

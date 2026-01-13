@@ -56,21 +56,29 @@ func SetupRoutes(cfg *config.Config) *gin.Engine {
 				admin.POST("/employees", adminHandler.CreateEmployee)
 			}
 
-			// URLA routes
-			urlaService := services.NewURLAService()
-			urlaHandler := handlers.NewURLAHandler(urlaService)
-			
-			urla := protected.Group("/urla")
-			{
-				urla.POST("/applications", urlaHandler.CreateApplication)
-				urla.GET("/applications", urlaHandler.GetMyApplications)
-				urla.GET("/applications/:id", urlaHandler.GetApplication)
-				urla.PUT("/applications/:id/status", urlaHandler.UpdateApplicationStatus)
-				urla.POST("/applications/:id/save", urlaHandler.SaveApplication)
-				urla.GET("/applications/:id/progress", urlaHandler.GetApplicationProgress)
-				urla.PATCH("/applications/:id/progress/section", urlaHandler.UpdateApplicationProgressSection)
-				urla.PATCH("/applications/:id/progress/notes", urlaHandler.UpdateApplicationProgressNotes)
-			}
+		// URLA routes
+		urlaService := services.NewURLAService(cfg)
+		urlaHandler := handlers.NewURLAHandler(urlaService)
+		
+		urla := protected.Group("/urla")
+		{
+			urla.POST("/applications", urlaHandler.CreateApplication)
+			urla.GET("/applications", urlaHandler.GetMyApplications)
+			urla.GET("/applications/:id", urlaHandler.GetApplication)
+			urla.PUT("/applications/:id/status", urlaHandler.UpdateApplicationStatus)
+			urla.POST("/applications/:id/save", urlaHandler.SaveApplication)
+			urla.GET("/applications/:id/progress", urlaHandler.GetApplicationProgress)
+			urla.PATCH("/applications/:id/progress/section", urlaHandler.UpdateApplicationProgressSection)
+			urla.PATCH("/applications/:id/progress/notes", urlaHandler.UpdateApplicationProgressNotes)
+		}
+
+		// Public URLA routes (no auth required)
+		urlaPublic := v1.Group("/urla")
+		{
+			urlaPublic.POST("/pre-application/send-verification", urlaHandler.SendVerificationCode)
+			urlaPublic.POST("/pre-application/verify-and-create", urlaHandler.VerifyAndCreateBorrower)
+			urlaPublic.POST("/pre-application/complete", urlaHandler.CreateBorrowerAndDealFromPreApplication) // Deprecated
+		}
 		}
 	}
 
