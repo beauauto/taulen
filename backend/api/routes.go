@@ -39,6 +39,8 @@ func SetupRoutes(cfg *config.Config) *gin.Engine {
 		auth := v1.Group("/auth")
 		{
 			auth.POST("/register", authHandler.Register)
+			auth.POST("/register/send-verification", authHandler.SendVerificationCodeForRegister)
+			auth.POST("/register/verify", authHandler.VerifyAndRegister)
 			auth.POST("/login", authHandler.Login)
 			auth.POST("/refresh", authHandler.Refresh)
 			auth.POST("/logout", middleware.AuthMiddleware(authService.GetJWTManager()), authHandler.Logout)

@@ -146,9 +146,49 @@ export function useAuth() {
     }
   }
 
-  const register = async (email: string, password: string, firstName: string, lastName: string) => {
+  const register = async (email: string, password: string, firstName: string, lastName: string, phone: string) => {
     try {
-      const response = await authApi.register({ email, password, firstName, lastName })
+      const response = await authApi.register({ email, password, firstName, lastName, phone })
+      const { accessToken, refreshToken, user: userData } = response.data
+      
+      // Store in localStorage
+      authUtils.setToken(accessToken)
+      authUtils.setRefreshToken(refreshToken)
+      authUtils.setUser(userData)
+      
+      // Also store in cookies for middleware
+      cookieUtils.setCookie('token', accessToken, 7)
+      cookieUtils.setCookie('refreshToken', refreshToken, 30)
+      
+      setUser(userData)
+      setIsAuthenticated(true)
+      
+      return { success: true }
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.response?.data?.error || error.response?.data?.message || 'Registration failed',
+      }
+    }
+  }
+
+  const verifyAndRegister = async (
+    email: string,
+    password: string,
+    firstName: string,
+    lastName: string,
+    phone: string,
+    verificationCode: string
+  ) => {
+    try {
+      const response = await authApi.verifyAndRegister({
+        email,
+        password,
+        firstName,
+        lastName,
+        phone,
+        verificationCode,
+      })
       const { accessToken, refreshToken, user: userData } = response.data
       
       // Store in localStorage

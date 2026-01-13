@@ -3,6 +3,7 @@ package services
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 	"taulen/backend/internal/config"
 	"taulen/backend/internal/repositories"
@@ -481,7 +482,8 @@ func (s *URLAService) SendVerificationCode(req SendVerificationCodeRequest) erro
 	}
 	
 	if err != nil {
-		return errors.New("failed to send verification code")
+		// Return the actual error message from SMS/Email service for better debugging
+		return fmt.Errorf("failed to send verification code: %w", err)
 	}
 	
 	return nil
@@ -537,7 +539,7 @@ func (s *URLAService) VerifyAndCreateBorrower(req VerifyAndCreateBorrowerRequest
 		}
 	} else {
 		// Create new borrower with password
-		newBorrower, err := s.borrowerRepo.Create(req.Email, passwordHash, req.FirstName, req.LastName)
+		newBorrower, err := s.borrowerRepo.Create(req.Email, passwordHash, req.FirstName, req.LastName, req.Phone)
 		if err != nil {
 			return nil, errors.New("failed to create borrower: " + err.Error())
 		}
@@ -568,6 +570,25 @@ func (s *URLAService) VerifyAndCreateBorrower(req VerifyAndCreateBorrowerRequest
 		return nil, errors.New("failed to generate refresh token")
 	}
 	
+	// Update borrower with date of birth if provided
+	if req.DateOfBirth != "" {
+		birthDate, err := time.Parse("2006-01-02", req.DateOfBirth)
+		if err == nil {
+			err = s.borrowerRepo.UpdateBorrowerInfo(borrowerID, &birthDate)
+			if err != nil {
+				// Log but don't fail
+			}
+		}
+	}
+	
+	// Create current residence record for borrower if address provided
+	if req.Address != "" && req.City != "" && req.State != "" && req.ZipCode != "" {
+		_, err = s.borrowerRepo.CreateResidence(borrowerID, "BorrowerCurrentResidence", req.Address, req.City, req.State, req.ZipCode)
+		if err != nil {
+			// Log but don't fail - residence can be added later
+		}
+	}
+	
 	// Calculate loan amount
 	loanAmount := req.EstimatedPrice - req.DownPayment
 	if loanAmount <= 0 {
@@ -578,6 +599,26 @@ func (s *URLAService) VerifyAndCreateBorrower(req VerifyAndCreateBorrowerRequest
 	dealID, err := s.dealRepo.CreateDeal("", &borrowerID, req.LoanPurpose, loanAmount, "Draft")
 	if err != nil {
 		return nil, errors.New("failed to create application")
+	}
+	
+	// Create subject property record if property information is provided
+	// Use location from pre-application or address if available
+	propertyAddress := req.Address
+	propertyCity := req.City
+	propertyState := req.State
+	propertyZip := req.ZipCode
+	
+	// If we have estimated price, create subject property
+	if req.EstimatedPrice > 0 {
+		// If we don't have a specific address, use location field or leave empty
+		if propertyAddress == "" {
+			// Could use location field if available, but for now leave empty
+			// The property address can be filled in later during the full application
+		}
+		_, err = s.dealRepo.CreateSubjectProperty(dealID, propertyAddress, propertyCity, propertyState, propertyZip, req.EstimatedPrice)
+		if err != nil {
+			// Log but don't fail - property can be added later
+		}
 	}
 	
 	return &VerifyAndCreateBorrowerResponse{

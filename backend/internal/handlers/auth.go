@@ -48,6 +48,59 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	c.JSON(http.StatusCreated, response)
 }
 
+// SendVerificationCodeForRegister sends a verification code for registration
+func (h *AuthHandler) SendVerificationCodeForRegister(c *gin.Context) {
+	var req struct {
+		Email string `json:"email" binding:"required,email"`
+		Phone string `json:"phone" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Use URLAService to send verification code
+	urlaService := services.NewURLAService(h.authService.GetConfig())
+	err := urlaService.SendVerificationCode(services.SendVerificationCodeRequest{
+		Email: req.Email,
+		Phone: req.Phone,
+		// VerificationMethod will be auto-selected (prefers SMS)
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Verification code sent successfully"})
+}
+
+// VerifyAndRegister handles registration with verification code
+func (h *AuthHandler) VerifyAndRegister(c *gin.Context) {
+	var req services.VerifyAndRegisterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	response, err := h.authService.VerifyAndRegister(req)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		errorMsg := err.Error()
+		
+		// Check for various "already exists" error messages
+		if strings.Contains(errorMsg, "already exists") || 
+		   strings.Contains(errorMsg, "already registered") ||
+		   strings.Contains(errorMsg, "invalid or expired") {
+			statusCode = http.StatusBadRequest
+		}
+		
+		c.JSON(statusCode, gin.H{"error": errorMsg})
+		return
+	}
+
+	c.JSON(http.StatusCreated, response)
+}
+
 // Login handles user login
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req services.LoginRequest

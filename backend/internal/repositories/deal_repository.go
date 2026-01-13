@@ -137,6 +137,15 @@ func (r *DealRepository) UpdateLoan(dealID int64, loanPurpose, propertyType, man
 	return err
 }
 
+// CreateSubjectProperty creates a subject property record for a deal
+func (r *DealRepository) CreateSubjectProperty(dealID int64, address, city, state, zipCode string, estimatedValue float64) (int64, error) {
+	query := `INSERT INTO subject_property (deal_id, address_line_text, city_name, state_code, postal_code, estimated_value, property_usage_type) 
+	          VALUES ($1, $2, $3, $4, $5, $6, 'PrimaryResidence') RETURNING id`
+	var propertyID int64
+	err := r.db.QueryRow(query, dealID, address, city, state, zipCode, estimatedValue).Scan(&propertyID)
+	return propertyID, err
+}
+
 // GetDealsByUserID retrieves all deals managed by an employee
 // Note: The new schema doesn't have user_id in deal table
 // This relationship might need to be tracked in a separate table (deal_user_assignment) or added to deal

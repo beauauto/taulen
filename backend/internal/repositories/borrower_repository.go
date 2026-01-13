@@ -126,9 +126,9 @@ func (r *BorrowerRepository) GetByID(id int64) (*Borrower, error) {
 }
 
 // Create creates a new borrower in the borrower table (during signup)
-func (r *BorrowerRepository) Create(email, passwordHash, firstName, lastName string) (*Borrower, error) {
-	query := `INSERT INTO borrower (email_address, password_hash, first_name, last_name) 
-	          VALUES ($1, $2, $3, $4) 
+func (r *BorrowerRepository) Create(email, passwordHash, firstName, lastName, phone string) (*Borrower, error) {
+	query := `INSERT INTO borrower (email_address, password_hash, first_name, last_name, mobile_phone) 
+	          VALUES ($1, $2, $3, $4, $5) 
 	          RETURNING id, email_address, password_hash, email_verified, email_verification_token, 
 	          email_verification_expires_at, password_reset_token, password_reset_expires_at, 
 	          last_password_change_at, mfa_enabled, mfa_secret, mfa_backup_codes, mfa_setup_at, 
@@ -137,7 +137,7 @@ func (r *BorrowerRepository) Create(email, passwordHash, firstName, lastName str
 	          taxpayer_identifier_value, birth_date, citizenship_residency_type, marital_status, 
 	          dependent_count, dependent_ages, home_phone, mobile_phone, work_phone, 
 	          work_phone_extension, created_at, updated_at`
-	row := r.db.QueryRow(query, email, passwordHash, firstName, lastName)
+	row := r.db.QueryRow(query, email, passwordHash, firstName, lastName, phone)
 
 	borrower := &Borrower{}
 	err := row.Scan(
@@ -289,6 +289,25 @@ func (r *BorrowerRepository) UpdateName(borrowerID int64, firstName, lastName st
 	
 	_, err := r.db.Exec(query, firstName, lastName, borrowerID)
 	return err
+}
+
+// UpdateBorrowerInfo updates borrower personal information (date of birth, etc.)
+func (r *BorrowerRepository) UpdateBorrowerInfo(id int64, dateOfBirth *time.Time) error {
+	query := `UPDATE borrower SET 
+	          birth_date = $1, 
+	          updated_at = CURRENT_TIMESTAMP
+	          WHERE id = $2`
+	_, err := r.db.Exec(query, dateOfBirth, id)
+	return err
+}
+
+// CreateResidence creates a residence record for a borrower
+func (r *BorrowerRepository) CreateResidence(borrowerID int64, residencyType, address, city, state, zipCode string) (int64, error) {
+	query := `INSERT INTO residence (borrower_id, residency_type, address_line_text, city_name, state_code, postal_code) 
+	          VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`
+	var residenceID int64
+	err := r.db.QueryRow(query, borrowerID, residencyType, address, city, state, zipCode).Scan(&residenceID)
+	return residenceID, err
 }
 
 // Note: deal_id has been removed from borrower table

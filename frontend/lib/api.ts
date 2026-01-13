@@ -53,8 +53,18 @@ export default apiClient
 export const authApi = {
   login: (email: string, password: string) =>
     apiClient.post('/auth/login', { email, password }),
-  register: (data: { email: string; password: string; firstName: string; lastName: string }) =>
+  register: (data: { email: string; password: string; firstName: string; lastName: string; phone: string }) =>
     apiClient.post('/auth/register', data),
+  sendVerificationCodeForRegister: (email: string, phone: string) =>
+    apiClient.post('/auth/register/send-verification', { email, phone }),
+  verifyAndRegister: (data: {
+    email: string
+    password: string
+    firstName: string
+    lastName: string
+    phone: string
+    verificationCode: string
+  }) => apiClient.post('/auth/register/verify', data),
   refresh: (refreshToken: string) =>
     apiClient.post('/auth/refresh', { refreshToken }),
   logout: () => apiClient.post('/auth/logout'),

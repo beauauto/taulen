@@ -15,6 +15,7 @@ type AuthService struct {
 	userRepo     *repositories.UserRepository
 	borrowerRepo *repositories.BorrowerRepository
 	jwtManager   *utils.JWTManager
+	cfg          *config.Config
 }
 
 // NewAuthService creates a new auth service
@@ -23,15 +24,33 @@ func NewAuthService(cfg *config.Config) *AuthService {
 		userRepo:     repositories.NewUserRepository(),
 		borrowerRepo: repositories.NewBorrowerRepository(),
 		jwtManager:   utils.NewJWTManager(&cfg.JWT),
+		cfg:          cfg,
 	}
 }
 
+// GetConfig returns the config (for use in handlers)
+func (s *AuthService) GetConfig() *config.Config {
+	return s.cfg
+}
+
 // RegisterRequest represents a registration request (borrowers only)
+// DEPRECATED: Use VerifyAndRegisterRequest instead for 2FA
 type RegisterRequest struct {
 	Email     string `json:"email" binding:"required,email"`
 	Password  string `json:"password" binding:"required,min=8"`
 	FirstName string `json:"firstName" binding:"required"`
 	LastName  string `json:"lastName" binding:"required"`
+	Phone     string `json:"phone" binding:"required"` // Phone is required for 2FA
+}
+
+// VerifyAndRegisterRequest represents a registration request with verification code
+type VerifyAndRegisterRequest struct {
+	Email           string `json:"email" binding:"required,email"`
+	Password        string `json:"password" binding:"required,min=8"`
+	FirstName       string `json:"firstName" binding:"required"`
+	LastName        string `json:"lastName" binding:"required"`
+	Phone           string `json:"phone" binding:"required"`
+	VerificationCode string `json:"verificationCode" binding:"required,len=6"`
 }
 
 // LoginRequest represents a login request
@@ -94,7 +113,7 @@ func (s *AuthService) Register(req RegisterRequest) (*AuthResponse, error) {
 
 	// Create borrower in "borrower" table (NOT "user" table)
 	// Employees are created separately by admins via CreateEmployee method
-	borrower, err := s.borrowerRepo.Create(req.Email, passwordHash, req.FirstName, req.LastName)
+	borrower, err := s.borrowerRepo.Create(req.Email, passwordHash, req.FirstName, req.LastName, req.Phone)
 	if err != nil {
 		// Check if it's a unique constraint error that we already handle
 		if strings.Contains(err.Error(), "borrower with this email already exists") {
@@ -134,76 +153,55 @@ func (s *AuthService) Register(req RegisterRequest) (*AuthResponse, error) {
 	}, nil
 }
 
-// Login authenticates a user (employee or borrower)
-// First checks user table, then borrower table
-func (s *AuthService) Login(req LoginRequest) (*AuthResponse, error) {
-	// Try employee login first
-	user, err := s.userRepo.GetByEmail(req.Email)
-	if err == nil {
-		// Found in user table - employee login
-		if user.Status != "active" {
-			return nil, errors.New("account is not active")
-		}
-
-		if !utils.CheckPasswordHash(req.Password, user.PasswordHash) {
-			return nil, errors.New("invalid email or password")
-		}
-
-		// Generate tokens
-		accessToken, err := s.jwtManager.GenerateAccessToken(user.ID, user.Email)
-		if err != nil {
-			return nil, errors.New("failed to generate access token")
-		}
-
-		refreshToken, err := s.jwtManager.GenerateRefreshToken(user.ID, user.Email)
-		if err != nil {
-			return nil, errors.New("failed to generate refresh token")
-		}
-
-		firstName := ""
-		if user.FirstName.Valid {
-			firstName = user.FirstName.String
-		}
-		lastName := ""
-		if user.LastName.Valid {
-			lastName = user.LastName.String
-		}
-
-		return &AuthResponse{
-			AccessToken:  accessToken,
-			RefreshToken: refreshToken,
-			User: UserResponse{
-				ID:        user.ID,
-				Email:     user.Email,
-				FirstName: firstName,
-				LastName:  lastName,
-				Role:      user.Role,
-				UserType:  "employee",
-			},
-		}, nil
-	}
-
-	// If error is not "not found", it's a database error
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, errors.New("failed to check user account")
-	}
-
-	// Try borrower login
-	borrower, err := s.borrowerRepo.GetByEmail(req.Email)
+// VerifyAndRegister verifies the code and creates a borrower account
+// This is used for direct sign-up with 2FA
+func (s *AuthService) VerifyAndRegister(req VerifyAndRegisterRequest) (*AuthResponse, error) {
+	// Verify the code first
+	valid, err := s.borrowerRepo.VerifyCode(req.Email, req.VerificationCode)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, errors.New("invalid email or password")
+		return nil, errors.New("failed to verify code")
+	}
+	if !valid {
+		return nil, errors.New("invalid or expired verification code")
+	}
+
+	// Check if borrower already exists
+	existingBorrower, err := s.borrowerRepo.GetByEmail(req.Email)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("failed to check if borrower exists: %w", err)
+	}
+	if existingBorrower != nil {
+		return nil, errors.New("borrower with this email already exists")
+	}
+
+	// Check if employee with this email exists
+	existingUser, err := s.userRepo.GetByEmail(req.Email)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("failed to check if user exists: %w", err)
+	}
+	if existingUser != nil {
+		return nil, errors.New("this email is already registered as an employee account")
+	}
+
+	// Hash password
+	passwordHash, err := utils.HashPassword(req.Password)
+	if err != nil {
+		return nil, errors.New("failed to hash password")
+	}
+
+	// Create borrower in "borrower" table
+	borrower, err := s.borrowerRepo.Create(req.Email, passwordHash, req.FirstName, req.LastName, req.Phone)
+	if err != nil {
+		if strings.Contains(err.Error(), "borrower with this email already exists") {
+			return nil, err
 		}
-		return nil, errors.New("failed to check borrower account")
+		return nil, fmt.Errorf("failed to create borrower: %w", err)
 	}
 
-	// Verify password
-	if !borrower.PasswordHash.Valid {
-		return nil, errors.New("invalid email or password")
-	}
-
-	if !utils.CheckPasswordHash(req.Password, borrower.PasswordHash.String) {
-		return nil, errors.New("invalid email or password")
+	// Clear verification code
+	err = s.borrowerRepo.ClearVerificationCode(req.Email)
+	if err != nil {
+		// Log but don't fail
 	}
 
 	// Generate tokens
@@ -232,6 +230,109 @@ func (s *AuthService) Login(req LoginRequest) (*AuthResponse, error) {
 			FirstName: borrower.FirstName,
 			LastName:  borrower.LastName,
 			UserType:  "applicant",
+		},
+	}, nil
+}
+
+// Login authenticates a user (borrower or employee)
+// First checks borrower table, then user table (employees)
+func (s *AuthService) Login(req LoginRequest) (*AuthResponse, error) {
+	// Try borrower login first
+	borrower, err := s.borrowerRepo.GetByEmail(req.Email)
+	if err == nil {
+		// Found in borrower table - borrower login
+		// Verify password
+		if !borrower.PasswordHash.Valid {
+			return nil, errors.New("invalid email or password")
+		}
+
+		if !utils.CheckPasswordHash(req.Password, borrower.PasswordHash.String) {
+			return nil, errors.New("invalid email or password")
+		}
+
+		// Generate tokens
+		borrowerIDStr := utils.Int64ToString(borrower.ID)
+		email := ""
+		if borrower.EmailAddress.Valid {
+			email = borrower.EmailAddress.String
+		}
+
+		accessToken, err := s.jwtManager.GenerateAccessToken(borrowerIDStr, email)
+		if err != nil {
+			return nil, errors.New("failed to generate access token")
+		}
+
+		refreshToken, err := s.jwtManager.GenerateRefreshToken(borrowerIDStr, email)
+		if err != nil {
+			return nil, errors.New("failed to generate refresh token")
+		}
+
+		return &AuthResponse{
+			AccessToken:  accessToken,
+			RefreshToken: refreshToken,
+			User: UserResponse{
+				ID:        borrowerIDStr,
+				Email:     email,
+				FirstName: borrower.FirstName,
+				LastName:  borrower.LastName,
+				UserType:  "applicant",
+			},
+		}, nil
+	}
+
+	// If error is not "not found", it's a database error
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, errors.New("failed to check borrower account")
+	}
+
+	// Try employee login (user table)
+	user, err := s.userRepo.GetByEmail(req.Email)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New("invalid email or password")
+		}
+		return nil, errors.New("failed to check user account")
+	}
+
+	// Found in user table - employee login
+	if user.Status != "active" {
+		return nil, errors.New("account is not active")
+	}
+
+	if !utils.CheckPasswordHash(req.Password, user.PasswordHash) {
+		return nil, errors.New("invalid email or password")
+	}
+
+	// Generate tokens
+	accessToken, err := s.jwtManager.GenerateAccessToken(user.ID, user.Email)
+	if err != nil {
+		return nil, errors.New("failed to generate access token")
+	}
+
+	refreshToken, err := s.jwtManager.GenerateRefreshToken(user.ID, user.Email)
+	if err != nil {
+		return nil, errors.New("failed to generate refresh token")
+	}
+
+	firstName := ""
+	if user.FirstName.Valid {
+		firstName = user.FirstName.String
+	}
+	lastName := ""
+	if user.LastName.Valid {
+		lastName = user.LastName.String
+	}
+
+	return &AuthResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		User: UserResponse{
+			ID:        user.ID,
+			Email:     user.Email,
+			FirstName: firstName,
+			LastName:  lastName,
+			Role:      user.Role,
+			UserType:  "employee",
 		},
 	}, nil
 }
