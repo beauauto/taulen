@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"taulen/backend/internal/config"
 	"taulen/backend/internal/repositories"
 	"taulen/backend/internal/utils"
@@ -44,19 +45,26 @@ type RegisterRequest struct {
 }
 
 // VerifyAndRegisterRequest represents a registration request with verification code
+// NOTE: VerificationCode is optional when 2FA is disabled
 type VerifyAndRegisterRequest struct {
 	Email           string `json:"email" binding:"required,email"`
 	Password        string `json:"password" binding:"required,min=8"`
 	FirstName       string `json:"firstName" binding:"required"`
 	LastName        string `json:"lastName" binding:"required"`
-	Phone           string `json:"phone" binding:"required"`
-	VerificationCode string `json:"verificationCode" binding:"required,len=6"`
+	Phone           string `json:"phone"` // Optional when 2FA is disabled
+	VerificationCode string `json:"verificationCode"` // Optional when 2FA is disabled
 }
 
 // LoginRequest represents a login request
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
+	Email            string `json:"email" binding:"required,email"`
+	Password         string `json:"password" binding:"required"`
+	VerificationCode string `json:"verificationCode,omitempty"` // Optional: required for 2FA login
+}
+
+// SendLoginVerificationCodeRequest represents a request to send verification code for login
+type SendLoginVerificationCodeRequest struct {
+	Email string `json:"email" binding:"required,email"`
 }
 
 // RefreshRequest represents a refresh token request
@@ -155,15 +163,17 @@ func (s *AuthService) Register(req RegisterRequest) (*AuthResponse, error) {
 
 // VerifyAndRegister verifies the code and creates a borrower account
 // This is used for direct sign-up with 2FA
+// NOTE: 2FA is currently disabled - verification code check is bypassed
 func (s *AuthService) VerifyAndRegister(req VerifyAndRegisterRequest) (*AuthResponse, error) {
-	// Verify the code first
-	valid, err := s.borrowerRepo.VerifyCode(req.Email, req.VerificationCode)
-	if err != nil {
-		return nil, errors.New("failed to verify code")
-	}
-	if !valid {
-		return nil, errors.New("invalid or expired verification code")
-	}
+	// 2FA is disabled - skip verification code check
+	// TODO: Re-enable when 2FA is needed
+	// valid, err := s.borrowerRepo.VerifyCode(req.Email, req.VerificationCode)
+	// if err != nil {
+	// 	return nil, errors.New("failed to verify code")
+	// }
+	// if !valid {
+	// 	return nil, errors.New("invalid or expired verification code")
+	// }
 
 	// Check if borrower already exists
 	existingBorrower, err := s.borrowerRepo.GetByEmail(req.Email)
@@ -183,10 +193,20 @@ func (s *AuthService) VerifyAndRegister(req VerifyAndRegisterRequest) (*AuthResp
 		return nil, errors.New("this email is already registered as an employee account")
 	}
 
+	// Validate password is not empty
+	if req.Password == "" {
+		return nil, errors.New("password cannot be empty")
+	}
+
 	// Hash password
 	passwordHash, err := utils.HashPassword(req.Password)
 	if err != nil {
-		return nil, errors.New("failed to hash password")
+		return nil, fmt.Errorf("failed to hash password: %w", err)
+	}
+	
+	// Validate hash was generated
+	if passwordHash == "" {
+		return nil, errors.New("password hash generation failed: empty hash")
 	}
 
 	// Create borrower in "borrower" table
@@ -234,9 +254,73 @@ func (s *AuthService) VerifyAndRegister(req VerifyAndRegisterRequest) (*AuthResp
 	}, nil
 }
 
+// SendLoginVerificationCode sends a verification code via email for login
+func (s *AuthService) SendLoginVerificationCode(req SendLoginVerificationCodeRequest) error {
+	// Check if user exists (borrower or employee)
+	borrower, err := s.borrowerRepo.GetByEmail(req.Email)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return errors.New("failed to check if user exists")
+	}
+	
+	user, err := s.userRepo.GetByEmail(req.Email)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return errors.New("failed to check if user exists")
+	}
+	
+	if borrower == nil && user == nil {
+		return errors.New("no account found with this email")
+	}
+	
+	// Generate verification code
+	code, err := utils.GenerateVerificationCode()
+	if err != nil {
+		return errors.New("failed to generate verification code")
+	}
+	
+	// Store verification code (expires in 10 minutes)
+	expiresAt := time.Now().Add(10 * time.Minute)
+	
+	// Store code in borrower table (works for both borrowers and employees)
+	if borrower != nil {
+		err = s.borrowerRepo.SetVerificationCode(req.Email, code, "email", expiresAt)
+	} else {
+		// For employees, we'd need to add verification code support to user table
+		// For now, use borrower table if it exists, otherwise create a temporary record
+		err = s.borrowerRepo.SetVerificationCode(req.Email, code, "email", expiresAt)
+	}
+	
+	if err != nil {
+		return errors.New("failed to store verification code")
+	}
+	
+	// Send verification code via email
+	emailService := NewEmailService(s.cfg)
+	err = emailService.SendVerificationCode(req.Email, code)
+	if err != nil {
+		return fmt.Errorf("failed to send verification email: %w", err)
+	}
+	
+	return nil
+}
+
 // Login authenticates a user (borrower or employee)
 // First checks borrower table, then user table (employees)
+// NOTE: 2FA is currently disabled - password-only authentication
 func (s *AuthService) Login(req LoginRequest) (*AuthResponse, error) {
+	// 2FA is disabled - skip verification code check
+	// TODO: Re-enable when 2FA is needed
+	// if req.VerificationCode != "" {
+	// 	valid, err := s.borrowerRepo.VerifyCode(req.Email, req.VerificationCode)
+	// 	if err != nil {
+	// 		return nil, errors.New("failed to verify code")
+	// 	}
+	// 	if !valid {
+	// 		return nil, errors.New("invalid or expired verification code")
+	// 	}
+	// } else {
+	// 	return nil, errors.New("verification code required. Please request a verification code first.")
+	// }
+	
 	// Try borrower login first
 	borrower, err := s.borrowerRepo.GetByEmail(req.Email)
 	if err == nil {

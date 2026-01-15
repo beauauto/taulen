@@ -41,6 +41,7 @@ func SetupRoutes(cfg *config.Config) *gin.Engine {
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/register/send-verification", authHandler.SendVerificationCodeForRegister)
 			auth.POST("/register/verify", authHandler.VerifyAndRegister)
+			auth.POST("/login/send-verification", authHandler.SendLoginVerificationCode)
 			auth.POST("/login", authHandler.Login)
 			auth.POST("/refresh", authHandler.Refresh)
 			auth.POST("/logout", middleware.AuthMiddleware(authService.GetJWTManager()), authHandler.Logout)
@@ -78,8 +79,7 @@ func SetupRoutes(cfg *config.Config) *gin.Engine {
 		urlaPublic := v1.Group("/urla")
 		{
 			urlaPublic.POST("/pre-application/send-verification", urlaHandler.SendVerificationCode)
-			urlaPublic.POST("/pre-application/verify-and-create", urlaHandler.VerifyAndCreateBorrower)
-			urlaPublic.POST("/pre-application/complete", urlaHandler.CreateBorrowerAndDealFromPreApplication) // Deprecated
+		urlaPublic.POST("/pre-application/verify-and-create", urlaHandler.VerifyAndCreateBorrower)
 		}
 		}
 	}

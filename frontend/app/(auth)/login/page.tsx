@@ -21,25 +21,22 @@ function LoginForm() {
     // This effect is kept for cases where user is already logged in
   }, [isAuthenticated, router, searchParams])
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setIsLoading(true)
 
     try {
+      // 2FA is disabled - login without verification code
       const result = await login(email, password)
       
       if (!result.success) {
-        // Login failed - show error and stop loading
         setIsLoading(false)
         setError(result.error || 'Login failed. Please check your email and password.')
-        console.error('Login failed:', result.error)
-        // Don't redirect - stay on login page to show error
         return
       }
       
       // Login successful - redirect is handled in login function
-      // Keep loading state until redirect happens
     } catch (err: any) {
       setIsLoading(false)
       const errorMessage = err?.response?.data?.error || 
@@ -47,7 +44,6 @@ function LoginForm() {
                           err?.message || 
                           'An unexpected error occurred. Please try again.'
       setError(errorMessage)
-      console.error('Login error:', err)
     }
   }
 
@@ -61,7 +57,7 @@ function LoginForm() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleLogin} className="space-y-4">
             {error && (
               <div className="bg-red-50 border-2 border-red-300 text-red-800 px-4 py-3 rounded-md shadow-sm">
                 <div className="flex items-start">

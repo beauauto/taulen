@@ -24,10 +24,22 @@ export function useAuth() {
     setIsLoading(false)
   }, [])
 
-  const login = async (email: string, password: string) => {
+  const sendLoginVerificationCode = async (email: string) => {
+    try {
+      await authApi.sendLoginVerificationCode(email)
+      return { success: true }
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.response?.data?.error || error.response?.data?.message || 'Failed to send verification code',
+      }
+    }
+  }
+
+  const login = async (email: string, password: string, verificationCode?: string) => {
     try {
       console.log('Attempting login for:', email)
-      const response = await authApi.login(email, password)
+      const response = await authApi.login(email, password, verificationCode)
       console.log('Login response:', response)
       
       // Check if response.data exists
@@ -72,12 +84,46 @@ export function useAuth() {
       
       // Redirect based on user type and role
       // Sign up only creates borrowers, so registration always goes to applicant dashboard
-      // Sign in bifurcates: borrowers → applicant dashboard, employees → role-based dashboard
+      // Sign in bifurcates: borrowers → borrower form page, employees → role-based dashboard
       let redirectPath = '/dashboard'
       
       if (userData.userType === 'applicant') {
-        // Borrowers always go to applicant dashboard
-        redirectPath = '/dashboard/applicant'
+        // Borrowers go to their first application's borrower page (replicating borrower-htmlonly.html)
+        // Fetch applications and redirect to the first one
+        try {
+          const { urlaApi } = await import('@/lib/api')
+          const appsResponse = await urlaApi.getMyApplications()
+          const applications = appsResponse.data.applications || []
+          
+          if (applications.length > 0) {
+            // Sort by lastUpdatedDate (most recent first) and get the first one
+            applications.sort((a: any, b: any) => {
+              const dateA = new Date(a.lastUpdatedDate || a.createdDate).getTime()
+              const dateB = new Date(b.lastUpdatedDate || b.createdDate).getTime()
+              return dateB - dateA
+            })
+            const firstApp = applications[0]
+            redirectPath = `/applications/${firstApp.id}/borrower`
+          } else {
+            // No applications yet - create a default one and redirect to borrower page
+            try {
+              const newAppResponse = await urlaApi.createApplication({
+                loanType: 'Conventional',
+                loanPurpose: 'Purchase', // Default, can be updated later
+                loanAmount: 1, // Minimum required
+              })
+              redirectPath = `/applications/${newAppResponse.data.id}/borrower`
+            } catch (createError) {
+              console.error('Failed to create application, redirecting to dashboard:', createError)
+              // Fallback to dashboard if creation fails
+              redirectPath = '/dashboard/applicant'
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch applications, redirecting to dashboard:', error)
+          // Fallback to dashboard if API call fails
+          redirectPath = '/dashboard/applicant'
+        }
       } else if (userData.userType === 'employee') {
         // Employees are routed based on their role
         // Backend uses PascalCase: LoanOfficer, Underwriter, Processor, Admin
@@ -219,5 +265,7 @@ export function useAuth() {
     login,
     logout,
     register,
+    verifyAndRegister,
+    sendLoginVerificationCode,
   }
 }

@@ -19,7 +19,7 @@ type Config struct {
 	FileUpload FileUploadConfig
 	Logging  LoggingConfig
 	Twilio   TwilioConfig
-	SMTP     SMTPConfig
+	SendGrid SendGridConfig
 }
 
 // ServerConfig holds server-related configuration
@@ -94,18 +94,18 @@ type LoggingConfig struct {
 
 // TwilioConfig holds Twilio SMS configuration
 type TwilioConfig struct {
-	AccountSID string
-	AuthToken  string
-	FromPhone  string
+	AccountSID          string
+	AuthToken           string // Can be Auth Token or API Key Secret
+	APIKeySID           string // Optional: API Key SID (starts with SK) - use with API Key Secret instead of Auth Token
+	FromPhone           string
+	MessagingServiceSID string // Optional: Use Messaging Service SID instead of FromPhone (recommended for paid accounts)
 }
 
-// SMTPConfig holds SMTP email configuration
-type SMTPConfig struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
-	FromEmail string
+// SendGridConfig holds Twilio SendGrid email configuration
+type SendGridConfig struct {
+	APIKey  string // SendGrid API Key
+	FromEmail string // From email address
+	FromName  string // From name (optional)
 }
 
 // Load loads configuration from environment variables using Viper
@@ -164,16 +164,16 @@ func Load() (*Config, error) {
 			Format: viper.GetString("logging.format"),
 		},
 		Twilio: TwilioConfig{
-			AccountSID: viper.GetString("twilio.account_sid"),
-			AuthToken:  viper.GetString("twilio.auth_token"),
-			FromPhone:  viper.GetString("twilio.from_phone"),
+			AccountSID:          viper.GetString("twilio.account_sid"),
+			AuthToken:           viper.GetString("twilio.auth_token"),
+			APIKeySID:           viper.GetString("twilio.api_key_sid"),
+			FromPhone:           viper.GetString("twilio.from_phone"),
+			MessagingServiceSID: viper.GetString("twilio.messaging_service_sid"),
 		},
-		SMTP: SMTPConfig{
-			Host:     viper.GetString("smtp.host"),
-			Port:     viper.GetString("smtp.port"),
-			User:     viper.GetString("smtp.user"),
-			Password: viper.GetString("smtp.password"),
-			FromEmail: viper.GetString("smtp.from_email"),
+		SendGrid: SendGridConfig{
+			APIKey:    viper.GetString("sendgrid.api_key"),
+			FromEmail: viper.GetString("sendgrid.from_email"),
+			FromName:  viper.GetString("sendgrid.from_name"),
 		},
 	}
 
@@ -229,14 +229,14 @@ func setDefaults() {
 	// Twilio defaults
 	viper.SetDefault("twilio.account_sid", "")
 	viper.SetDefault("twilio.auth_token", "")
+	viper.SetDefault("twilio.api_key_sid", "")
 	viper.SetDefault("twilio.from_phone", "")
+	viper.SetDefault("twilio.messaging_service_sid", "")
 
-	// SMTP defaults
-	viper.SetDefault("smtp.host", "smtp.gmail.com")
-	viper.SetDefault("smtp.port", "587")
-	viper.SetDefault("smtp.user", "")
-	viper.SetDefault("smtp.password", "")
-	viper.SetDefault("smtp.from_email", "noreply@taulen.com")
+	// SendGrid defaults
+	viper.SetDefault("sendgrid.api_key", "")
+	viper.SetDefault("sendgrid.from_email", "noreply@taulen.com")
+	viper.SetDefault("sendgrid.from_name", "Taulen")
 }
 
 // parseStringSlice parses a comma-separated string into a slice

@@ -392,9 +392,11 @@ export function FormWizard({ applicationId, initialData }: FormWizardProps) {
               Next
             </Button>
           ) : (
-            <Button onClick={handleSubmit} className="flex-1">
-              Submit Application
-            </Button>
+            <div className="flex justify-center w-full">
+              <Button onClick={handleSubmit} className="max-w-md w-full">
+                Submit Application
+              </Button>
+            </div>
           )}
         </div>
       </div>

@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 	"taulen/backend/internal/config"
 	"taulen/backend/internal/repositories"
@@ -112,8 +114,10 @@ func (s *URLAService) CreateApplication(userID string, req CreateApplicationRequ
 
 // GetApplication retrieves a deal (application) by ID
 func (s *URLAService) GetApplication(dealID int64) (map[string]interface{}, error) {
+	log.Printf("GetApplication: Fetching application %d", dealID)
 	row, err := s.dealRepo.GetDealByID(dealID)
 	if err != nil {
+		log.Printf("GetApplication: Error fetching deal %d: %v", dealID, err)
 		return nil, errors.New("deal not found")
 	}
 
@@ -126,6 +130,7 @@ func (s *URLAService) GetApplication(dealID int64) (map[string]interface{}, erro
 		TotalBorrowers         sql.NullInt64
 		ApplicationDate        sql.NullTime
 		CreatedAt              sql.NullTime
+		PrimaryBorrowerID      sql.NullInt64
 		LoanID                 sql.NullInt64
 		LoanPurposeType        sql.NullString
 		LoanAmountRequested    sql.NullFloat64
@@ -138,13 +143,21 @@ func (s *URLAService) GetApplication(dealID int64) (map[string]interface{}, erro
 
 	err = row.Scan(
 		&deal.ID, &deal.LoanNumber, &deal.UniversalLoanIdentifier, &deal.AgencyCaseIdentifier,
-		&deal.ApplicationType, &deal.TotalBorrowers, &deal.ApplicationDate, &deal.CreatedAt,
+		&deal.ApplicationType, &deal.TotalBorrowers, &deal.ApplicationDate, &deal.CreatedAt, &deal.PrimaryBorrowerID,
 		&deal.LoanID, &deal.LoanPurposeType, &deal.LoanAmountRequested, &deal.LoanTermMonths,
 		&deal.InterestRatePercentage, &deal.PropertyType, &deal.ManufacturedHomeWidth, &deal.TitleMannerType,
 	)
 	if err != nil {
+		log.Printf("GetApplication: Error scanning deal %d: %v", dealID, err)
 		return nil, errors.New("failed to retrieve deal")
 	}
+
+	primaryBorrowerIDValue := int64(0)
+	if deal.PrimaryBorrowerID.Valid {
+		primaryBorrowerIDValue = deal.PrimaryBorrowerID.Int64
+	}
+	log.Printf("GetApplication: Deal %d - PrimaryBorrowerID.Valid=%v, PrimaryBorrowerID.Int64=%d", 
+		dealID, deal.PrimaryBorrowerID.Valid, primaryBorrowerIDValue)
 
 	result := make(map[string]interface{})
 	result["id"] = deal.ID
@@ -161,6 +174,93 @@ func (s *URLAService) GetApplication(dealID int64) (map[string]interface{}, erro
 		result["applicationType"] = deal.ApplicationType.String
 	}
 
+	// Fetch borrower data if primary_borrower_id exists
+	if deal.PrimaryBorrowerID.Valid {
+		log.Printf("GetApplication: Fetching borrower data for borrower ID %d", deal.PrimaryBorrowerID.Int64)
+		borrower, err := s.borrowerRepo.GetByID(deal.PrimaryBorrowerID.Int64)
+		if err != nil {
+			log.Printf("GetApplication: Error fetching borrower %d: %v", deal.PrimaryBorrowerID.Int64, err)
+		} else if borrower != nil {
+			borrowerEmail := ""
+			if borrower.EmailAddress.Valid {
+				borrowerEmail = borrower.EmailAddress.String
+			}
+			log.Printf("GetApplication: Found borrower %d - firstName=%s, lastName=%s, email=%s", 
+				borrower.ID, borrower.FirstName, borrower.LastName, borrowerEmail)
+			borrowerData := make(map[string]interface{})
+			borrowerData["firstName"] = borrower.FirstName
+			if borrower.MiddleName.Valid {
+				borrowerData["middleName"] = borrower.MiddleName.String
+			}
+			borrowerData["lastName"] = borrower.LastName
+			if borrower.Suffix.Valid {
+				borrowerData["suffix"] = borrower.Suffix.String
+			}
+			if borrower.EmailAddress.Valid {
+				borrowerData["email"] = borrower.EmailAddress.String
+			}
+			if borrower.MobilePhone.Valid && borrower.MobilePhone.String != "" {
+				borrowerData["phone"] = borrower.MobilePhone.String
+			} else if borrower.HomePhone.Valid && borrower.HomePhone.String != "" {
+				borrowerData["phone"] = borrower.HomePhone.String
+			} else if borrower.WorkPhone.Valid && borrower.WorkPhone.String != "" {
+				borrowerData["phone"] = borrower.WorkPhone.String
+			}
+			if borrower.BirthDate.Valid {
+				borrowerData["dateOfBirth"] = borrower.BirthDate.Time.Format("2006-01-02")
+			}
+			if borrower.MaritalStatus.Valid {
+				borrowerData["maritalStatus"] = borrower.MaritalStatus.String
+			}
+			
+			// Fetch current residence/address from residence table
+			addr, city, state, zipCode, err := s.borrowerRepo.GetCurrentResidence(deal.PrimaryBorrowerID.Int64)
+			if err != nil {
+				log.Printf("Error fetching residence for borrower %d: %v", deal.PrimaryBorrowerID.Int64, err)
+			} else {
+				log.Printf("Residence data for borrower %d: addr=%s, city=%s, state=%s, zip=%s", 
+					deal.PrimaryBorrowerID.Int64, addr, city, state, zipCode)
+				// Combine address components into a single string
+				addressParts := []string{}
+				if strings.TrimSpace(addr) != "" {
+					addressParts = append(addressParts, strings.TrimSpace(addr))
+				}
+				if strings.TrimSpace(city) != "" || strings.TrimSpace(state) != "" || strings.TrimSpace(zipCode) != "" {
+					cityStateZip := []string{}
+					if strings.TrimSpace(city) != "" {
+						cityStateZip = append(cityStateZip, strings.TrimSpace(city))
+					}
+					if strings.TrimSpace(state) != "" {
+						cityStateZip = append(cityStateZip, strings.TrimSpace(state))
+					}
+					if strings.TrimSpace(zipCode) != "" {
+						cityStateZip = append(cityStateZip, strings.TrimSpace(zipCode))
+					}
+					if len(cityStateZip) > 0 {
+						addressParts = append(addressParts, strings.Join(cityStateZip, ", "))
+					}
+				}
+				// Set currentAddress if we have any address parts
+				if len(addressParts) > 0 {
+					fullAddress := strings.Join(addressParts, ", ")
+					borrowerData["currentAddress"] = fullAddress
+					log.Printf("Synthesized currentAddress for borrower %d: %s", deal.PrimaryBorrowerID.Int64, fullAddress)
+				} else {
+					log.Printf("No address parts found for borrower %d (addr=%s, city=%s, state=%s, zip=%s)", 
+						deal.PrimaryBorrowerID.Int64, addr, city, state, zipCode)
+				}
+			}
+			
+			result["borrower"] = borrowerData
+			log.Printf("GetApplication: Added borrower data to result for application %d", dealID)
+		} else {
+			log.Printf("GetApplication: Borrower not found or error for borrower ID %d", deal.PrimaryBorrowerID.Int64)
+		}
+	} else {
+		log.Printf("GetApplication: No primary_borrower_id set for application %d", dealID)
+	}
+
+	log.Printf("GetApplication: Returning result for application %d, has borrower=%v", dealID, result["borrower"] != nil)
 	return result, nil
 }
 
@@ -373,34 +473,32 @@ type SendVerificationCodeRequest struct {
 type VerifyAndCreateBorrowerRequest struct {
 	Email          string  `json:"email" binding:"required,email"`
 	FirstName      string  `json:"firstName" binding:"required"`
+	MiddleName     string  `json:"middleName"`
 	LastName       string  `json:"lastName" binding:"required"`
+	Suffix         string  `json:"suffix"`
 	Phone          string  `json:"phone" binding:"required"`
+	PhoneType      string  `json:"phoneType"` // HOME, MOBILE, WORK, OTHER
+	MaritalStatus  string  `json:"maritalStatus"`
 	Password       string  `json:"password" binding:"required,min=8"`
 	DateOfBirth    string  `json:"dateOfBirth" binding:"required"`
 	Address        string  `json:"address"`
 	City           string  `json:"city"`
 	State          string  `json:"state"`
 	ZipCode        string  `json:"zipCode"`
-	EstimatedPrice float64 `json:"estimatedPrice"`
-	DownPayment    float64 `json:"downPayment"`
 	LoanPurpose    string  `json:"loanPurpose" binding:"required"`
-	VerificationCode string `json:"verificationCode" binding:"required,len=6"`
-}
-
-// CreateBorrowerAndDealFromPreApplicationRequest represents pre-application data (deprecated)
-type CreateBorrowerAndDealFromPreApplicationRequest struct {
-	Email          string  `json:"email" binding:"required,email"`
-	FirstName      string  `json:"firstName" binding:"required"`
-	LastName       string  `json:"lastName" binding:"required"`
-	Phone          string  `json:"phone" binding:"required"`
-	DateOfBirth    string  `json:"dateOfBirth" binding:"required"`
-	Address        string  `json:"address"`
-	City           string  `json:"city"`
-	State          string  `json:"state"`
-	ZipCode        string  `json:"zipCode"`
-	EstimatedPrice float64 `json:"estimatedPrice"`
+	VerificationCode string `json:"verificationCode"` // Optional - 2FA is disabled
+	
+	// Purchase-specific fields
+	PurchasePrice  float64 `json:"purchasePrice"`
 	DownPayment    float64 `json:"downPayment"`
-	LoanPurpose    string  `json:"loanPurpose" binding:"required"`
+	LoanAmount     float64 `json:"loanAmount"`
+	
+	// Refinance-specific fields
+	PropertyAddress    string  `json:"propertyAddress"`
+	OutstandingBalance float64 `json:"outstandingBalance"`
+	
+	// Legacy field for backward compatibility
+	EstimatedPrice float64 `json:"estimatedPrice"`
 }
 
 // SendVerificationCode sends a verification code via email or SMS
@@ -491,14 +589,37 @@ func (s *URLAService) SendVerificationCode(req SendVerificationCodeRequest) erro
 
 // VerifyAndCreateBorrower verifies the code and creates borrower account with deal
 // Returns auth tokens and application data for seamless login
+// NOTE: 2FA is currently disabled - verification code is optional
 func (s *URLAService) VerifyAndCreateBorrower(req VerifyAndCreateBorrowerRequest) (*VerifyAndCreateBorrowerResponse, error) {
-	// Verify the code
-	valid, err := s.borrowerRepo.VerifyCode(req.Email, req.VerificationCode)
-	if err != nil {
-		return nil, errors.New("failed to verify code")
+	// 2FA is disabled - skip verification code check
+	// if req.VerificationCode != "" {
+	// 	valid, err := s.borrowerRepo.VerifyCode(req.Email, req.VerificationCode)
+	// 	if err != nil {
+	// 		return nil, errors.New("failed to verify code")
+	// 	}
+	// 	if !valid {
+	// 		return nil, errors.New("invalid or expired verification code")
+	// 	}
+	// }
+	
+	// Check if borrower already exists by email
+	existingBorrowerByEmail, err := s.borrowerRepo.GetByEmail(req.Email)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, errors.New("failed to check if borrower exists by email")
 	}
-	if !valid {
-		return nil, errors.New("invalid or expired verification code")
+	
+	// Check if borrower already exists by phone
+	existingBorrowerByPhone, err := s.borrowerRepo.GetByPhone(req.Phone)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, errors.New("failed to check if borrower exists by phone")
+	}
+	
+	// If borrower exists by email or phone, return error
+	if existingBorrowerByEmail != nil {
+		return nil, errors.New("borrower with this email already exists")
+	}
+	if existingBorrowerByPhone != nil {
+		return nil, errors.New("borrower with this phone number already exists")
 	}
 	
 	// Hash password
@@ -507,51 +628,60 @@ func (s *URLAService) VerifyAndCreateBorrower(req VerifyAndCreateBorrowerRequest
 		return nil, errors.New("failed to hash password")
 	}
 	
-	// Check if borrower already exists
-	existingBorrower, err := s.borrowerRepo.GetByEmail(req.Email)
-	if err != nil && err != sql.ErrNoRows {
-		return nil, errors.New("failed to check if borrower exists")
+	// Determine initial phone value for Create (default to mobile_phone)
+	initialPhone := req.Phone
+	if initialPhone == "" {
+		initialPhone = "" // Will be set in UpdateBorrowerDetails
 	}
 	
-	var borrower *repositories.Borrower
-	var borrowerID int64
-	if existingBorrower != nil {
-		// Borrower exists (from pre-application step), update with password
-		borrowerID = existingBorrower.ID
-		// Update password if it doesn't exist
-		if !existingBorrower.PasswordHash.Valid || existingBorrower.PasswordHash.String == "" {
-			err = s.borrowerRepo.UpdatePassword(borrowerID, passwordHash)
-			if err != nil {
-				return nil, errors.New("failed to update borrower password: " + err.Error())
-			}
-		}
-		// Update name if needed
-		if existingBorrower.FirstName != req.FirstName || existingBorrower.LastName != req.LastName {
-			err = s.borrowerRepo.UpdateName(borrowerID, req.FirstName, req.LastName)
-			if err != nil {
-				// Log but don't fail
-			}
-		}
-		// Fetch updated borrower
-		borrower, err = s.borrowerRepo.GetByID(borrowerID)
-		if err != nil {
-			return nil, errors.New("failed to fetch borrower: " + err.Error())
-		}
-	} else {
-		// Create new borrower with password
-		newBorrower, err := s.borrowerRepo.Create(req.Email, passwordHash, req.FirstName, req.LastName, req.Phone)
-		if err != nil {
-			return nil, errors.New("failed to create borrower: " + err.Error())
-		}
-		borrower = newBorrower
-		borrowerID = newBorrower.ID
-	}
-	
-	// Clear verification code
-	err = s.borrowerRepo.ClearVerificationCode(req.Email)
+	// Create new borrower with password
+	// Phone will be properly set based on phoneType in UpdateBorrowerDetails
+	newBorrower, err := s.borrowerRepo.Create(req.Email, passwordHash, req.FirstName, req.LastName, initialPhone)
 	if err != nil {
-		// Log but don't fail
+		return nil, errors.New("failed to create borrower: " + err.Error())
 	}
+	borrowerID := newBorrower.ID
+	
+	// Update borrower details (middle name, suffix, marital status, phone)
+	var middleNamePtr, suffixPtr, maritalStatusPtr *string
+	var phonePtr, phoneTypePtr *string
+	
+	if req.MiddleName != "" {
+		middleNamePtr = &req.MiddleName
+	}
+	if req.Suffix != "" {
+		suffixPtr = &req.Suffix
+	}
+	if req.MaritalStatus != "" {
+		maritalStatusPtr = &req.MaritalStatus
+	}
+	if req.Phone != "" {
+		phonePtr = &req.Phone
+	}
+	if req.PhoneType != "" {
+		phoneTypePtr = &req.PhoneType
+	} else {
+		// Default to MOBILE if not specified
+		defaultPhoneType := "MOBILE"
+		phoneTypePtr = &defaultPhoneType
+	}
+	
+	err = s.borrowerRepo.UpdateBorrowerDetails(borrowerID, middleNamePtr, suffixPtr, maritalStatusPtr, phonePtr, phoneTypePtr)
+	if err != nil {
+		// Log but don't fail - details can be updated later
+	}
+	
+	// Fetch updated borrower
+	borrower, err := s.borrowerRepo.GetByID(borrowerID)
+	if err != nil {
+		return nil, errors.New("failed to fetch borrower: " + err.Error())
+	}
+	
+	// Clear verification code (2FA is disabled, but clear if exists)
+	// err = s.borrowerRepo.ClearVerificationCode(req.Email)
+	// if err != nil {
+	// 	// Log but don't fail
+	// }
 	
 	// Generate JWT tokens for seamless login
 	borrowerIDStr := utils.Int64ToString(borrowerID)
@@ -589,10 +719,64 @@ func (s *URLAService) VerifyAndCreateBorrower(req VerifyAndCreateBorrowerRequest
 		}
 	}
 	
-	// Calculate loan amount
-	loanAmount := req.EstimatedPrice - req.DownPayment
-	if loanAmount <= 0 {
-		loanAmount = req.EstimatedPrice
+	// Calculate loan amount based on loan purpose
+	var loanAmount float64
+	var propertyAddress, propertyCity, propertyState, propertyZip string
+	var propertyValue float64
+	
+	if req.LoanPurpose == "Purchase" || req.LoanPurpose == "purchase" {
+		// For purchase: use purchase price, down payment, and loan amount
+		if req.LoanAmount > 0 {
+			loanAmount = req.LoanAmount
+		} else if req.PurchasePrice > 0 {
+			loanAmount = req.PurchasePrice - req.DownPayment
+			if loanAmount <= 0 {
+				loanAmount = req.PurchasePrice
+			}
+		} else if req.EstimatedPrice > 0 {
+			// Legacy support
+			loanAmount = req.EstimatedPrice - req.DownPayment
+			if loanAmount <= 0 {
+				loanAmount = req.EstimatedPrice
+			}
+		}
+		
+		// Property address for purchase (can be empty initially)
+		propertyAddress = req.Address
+		propertyCity = req.City
+		propertyState = req.State
+		propertyZip = req.ZipCode
+		
+		if req.PurchasePrice > 0 {
+			propertyValue = req.PurchasePrice
+		} else if req.EstimatedPrice > 0 {
+			propertyValue = req.EstimatedPrice
+		}
+	} else if req.LoanPurpose == "Refinance" || req.LoanPurpose == "refinance" {
+		// For refinance: use outstanding balance as loan amount
+		loanAmount = req.OutstandingBalance
+		
+		// Parse property address from Refinance form
+		// Property address format: "Street Address, City, State Zip Code"
+		if req.PropertyAddress != "" {
+			// Try to parse the address
+			// For now, store the full address and parse later if needed
+			propertyAddress = req.PropertyAddress
+			// Could parse city, state, zip from the address string if needed
+		}
+		
+		propertyValue = req.OutstandingBalance // Use outstanding balance as property value estimate
+	} else {
+		// Default/legacy behavior
+		loanAmount = req.EstimatedPrice - req.DownPayment
+		if loanAmount <= 0 {
+			loanAmount = req.EstimatedPrice
+		}
+		propertyAddress = req.Address
+		propertyCity = req.City
+		propertyState = req.State
+		propertyZip = req.ZipCode
+		propertyValue = req.EstimatedPrice
 	}
 	
 	// Create deal in draft status
@@ -602,20 +786,8 @@ func (s *URLAService) VerifyAndCreateBorrower(req VerifyAndCreateBorrowerRequest
 	}
 	
 	// Create subject property record if property information is provided
-	// Use location from pre-application or address if available
-	propertyAddress := req.Address
-	propertyCity := req.City
-	propertyState := req.State
-	propertyZip := req.ZipCode
-	
-	// If we have estimated price, create subject property
-	if req.EstimatedPrice > 0 {
-		// If we don't have a specific address, use location field or leave empty
-		if propertyAddress == "" {
-			// Could use location field if available, but for now leave empty
-			// The property address can be filled in later during the full application
-		}
-		_, err = s.dealRepo.CreateSubjectProperty(dealID, propertyAddress, propertyCity, propertyState, propertyZip, req.EstimatedPrice)
+	if propertyValue > 0 {
+		_, err = s.dealRepo.CreateSubjectProperty(dealID, propertyAddress, propertyCity, propertyState, propertyZip, propertyValue)
 		if err != nil {
 			// Log but don't fail - property can be added later
 		}
@@ -649,59 +821,6 @@ func (s *URLAService) VerifyAndCreateBorrower(req VerifyAndCreateBorrowerRequest
 			State:       req.State,
 			ZipCode:     req.ZipCode,
 		},
-	}, nil
-}
-
-// CreateBorrowerAndDealFromPreApplication creates a borrower and deal from pre-application data
-// DEPRECATED: Use VerifyAndCreateBorrower instead
-func (s *URLAService) CreateBorrowerAndDealFromPreApplication(req CreateBorrowerAndDealFromPreApplicationRequest) (*ApplicationResponse, error) {
-	// Check if borrower already exists by email
-	existingBorrower, err := s.borrowerRepo.GetByEmail(req.Email)
-	if err != nil && err != sql.ErrNoRows {
-		return nil, errors.New("failed to check if borrower exists")
-	}
-
-	var borrowerID int64
-	if existingBorrower != nil {
-		// Borrower already exists, use existing ID
-		borrowerID = existingBorrower.ID
-	} else {
-		// Create new borrower from pre-application data
-		borrower, err := s.borrowerRepo.CreateFromPreApplication(
-			req.Email,
-			req.FirstName,
-			req.LastName,
-			req.Phone,
-			req.DateOfBirth,
-			req.Address,
-			req.City,
-			req.State,
-			req.ZipCode,
-		)
-		if err != nil {
-			return nil, errors.New("failed to create borrower: " + err.Error())
-		}
-		borrowerID = borrower.ID
-	}
-
-	// Calculate loan amount (estimated price - down payment)
-	loanAmount := req.EstimatedPrice - req.DownPayment
-	if loanAmount <= 0 {
-		loanAmount = req.EstimatedPrice // Fallback to full price if down payment >= price
-	}
-
-	// Create deal in draft status
-	dealID, err := s.dealRepo.CreateDeal("", &borrowerID, req.LoanPurpose, loanAmount, "Draft")
-	if err != nil {
-		return nil, errors.New("failed to create application")
-	}
-
-	return &ApplicationResponse{
-		ID:          dealID,
-		LoanType:    "Conventional", // Default, can be updated later
-		LoanPurpose: req.LoanPurpose,
-		LoanAmount:  loanAmount,
-		Status:      "Draft",
 	}, nil
 }
 

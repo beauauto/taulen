@@ -80,3 +80,7 @@ backend/internal/database/migrations/*.sql
 # Notes
 *-note
 *.note
+
+# Reference/External files
+wellsfargo/
+wf-short/

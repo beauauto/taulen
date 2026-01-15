@@ -82,7 +82,7 @@ func (r *DealRepository) CreateDeal(userID string, borrowerID *int64, loanPurpos
 // Returns a row with deal and loan information
 func (r *DealRepository) GetDealByID(dealID int64) (*sql.Row, error) {
 	query := `SELECT d.id, d.loan_number, d.universal_loan_identifier, d.agency_case_identifier,
-		d.application_type, d.total_borrowers, d.application_date, d.created_at,
+		d.application_type, d.total_borrowers, d.application_date, d.created_at, d.primary_borrower_id,
 		l.id as loan_id, l.loan_purpose_type, l.loan_amount_requested, l.loan_term_months,
 		l.interest_rate_percentage, l.property_type, l.manufactured_home_width_type, l.title_manner_type
 		FROM deal d

@@ -14,10 +14,18 @@ export default function DashboardLayout({
   const pathname = usePathname()
   const { user, logout } = useAuth()
 
+  // Hide sidebar for borrower page (replicates borrower-htmlonly.html layout)
+  const isBorrowerPage = pathname?.includes('/applications/') && pathname?.includes('/borrower')
+  
   const navItems = [
     { href: '/dashboard', label: 'Dashboard' },
     { href: '/applications', label: 'Applications' },
   ]
+
+  // For borrower page, render without sidebar (full screen)
+  if (isBorrowerPage) {
+    return <>{children}</>
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

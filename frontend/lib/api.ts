@@ -51,11 +51,13 @@ export default apiClient
 
 // API functions
 export const authApi = {
-  login: (email: string, password: string) =>
-    apiClient.post('/auth/login', { email, password }),
+  sendLoginVerificationCode: (email: string) =>
+    apiClient.post('/auth/login/send-verification', { email }),
+  login: (email: string, password: string, verificationCode?: string) =>
+    apiClient.post('/auth/login', { email, password, verificationCode }),
   register: (data: { email: string; password: string; firstName: string; lastName: string; phone: string }) =>
     apiClient.post('/auth/register', data),
-  sendVerificationCodeForRegister: (email: string, phone: string) =>
+  sendVerificationCodeForRegister: (email: string, phone?: string) =>
     apiClient.post('/auth/register/send-verification', { email, phone }),
   verifyAndRegister: (data: {
     email: string
@@ -94,18 +96,29 @@ export const urlaApi = {
   verifyAndCreateBorrower: (data: {
     email: string
     firstName: string
+    middleName?: string
     lastName: string
+    suffix?: string
     phone: string
+    phoneType?: string
+    maritalStatus?: string
     password: string
     dateOfBirth: string
     address?: string
     city?: string
     state?: string
     zipCode?: string
-    estimatedPrice?: number
-    downPayment?: number
     loanPurpose: string
-    verificationCode: string
+    verificationCode?: string // Optional when 2FA is disabled
+    // Purchase-specific fields
+    purchasePrice?: number
+    downPayment?: number
+    loanAmount?: number
+    // Refinance-specific fields
+    propertyAddress?: string
+    outstandingBalance?: number
+    // Legacy field
+    estimatedPrice?: number
   }) => apiClient.post<{
     application: {
       id: number
@@ -135,18 +148,4 @@ export const urlaApi = {
       zipCode: string
     }
   }>('/urla/pre-application/verify-and-create', data),
-  createBorrowerAndDealFromPreApplication: (data: {
-    email: string
-    firstName: string
-    lastName: string
-    phone: string
-    dateOfBirth: string
-    address?: string
-    city?: string
-    state?: string
-    zipCode?: string
-    estimatedPrice?: number
-    downPayment?: number
-    loanPurpose: string
-  }) => apiClient.post('/urla/pre-application/complete', data),
 }

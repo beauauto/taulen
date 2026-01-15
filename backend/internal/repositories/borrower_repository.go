@@ -93,6 +93,43 @@ func (r *BorrowerRepository) GetByEmail(email string) (*Borrower, error) {
 	return borrower, nil
 }
 
+// GetByPhone retrieves a borrower by phone number (checks mobile_phone, home_phone, and work_phone)
+func (r *BorrowerRepository) GetByPhone(phone string) (*Borrower, error) {
+	query := `SELECT id, email_address, password_hash, email_verified, email_verification_token, 
+	          email_verification_expires_at, password_reset_token, password_reset_expires_at, 
+	          last_password_change_at, mfa_enabled, mfa_secret, mfa_backup_codes, mfa_setup_at, 
+	          mfa_verified_at, last_login_at, failed_login_attempts, account_locked_until,
+	          first_name, middle_name, last_name, suffix, taxpayer_identifier_type, 
+	          taxpayer_identifier_value, birth_date, citizenship_residency_type, marital_status, 
+	          dependent_count, dependent_ages, home_phone, mobile_phone, work_phone, 
+	          work_phone_extension, created_at, updated_at
+	          FROM borrower 
+	          WHERE mobile_phone = $1 OR home_phone = $1 OR work_phone = $1
+	          LIMIT 1`
+	row := r.db.QueryRow(query, phone)
+
+	borrower := &Borrower{}
+	err := row.Scan(
+		&borrower.ID, &borrower.EmailAddress, &borrower.PasswordHash,
+		&borrower.EmailVerified, &borrower.EmailVerificationToken, &borrower.EmailVerificationExpiresAt,
+		&borrower.PasswordResetToken, &borrower.PasswordResetExpiresAt, &borrower.LastPasswordChangeAt,
+		&borrower.MFAEnabled, &borrower.MFASecret, &borrower.MFABackupCodes, &borrower.MFASetupAt,
+		&borrower.MFAVerifiedAt, &borrower.LastLoginAt, &borrower.FailedLoginAttempts, &borrower.AccountLockedUntil,
+		&borrower.FirstName, &borrower.MiddleName, &borrower.LastName, &borrower.Suffix,
+		&borrower.TaxpayerIDType, &borrower.TaxpayerIDValue, &borrower.BirthDate,
+		&borrower.CitizenshipType, &borrower.MaritalStatus, &borrower.DependentCount,
+		&borrower.DependentAges, &borrower.HomePhone, &borrower.MobilePhone,
+		&borrower.WorkPhone, &borrower.WorkPhoneExt, &borrower.CreatedAt, &borrower.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, sql.ErrNoRows
+		}
+		return nil, err
+	}
+	return borrower, nil
+}
+
 // GetByID retrieves a borrower by ID
 func (r *BorrowerRepository) GetByID(id int64) (*Borrower, error) {
 	query := `SELECT id, email_address, password_hash, email_verified, email_verification_token, 
@@ -127,6 +164,11 @@ func (r *BorrowerRepository) GetByID(id int64) (*Borrower, error) {
 
 // Create creates a new borrower in the borrower table (during signup)
 func (r *BorrowerRepository) Create(email, passwordHash, firstName, lastName, phone string) (*Borrower, error) {
+	// Validate that password hash is not empty
+	if passwordHash == "" {
+		return nil, errors.New("password hash cannot be empty")
+	}
+	
 	query := `INSERT INTO borrower (email_address, password_hash, first_name, last_name, mobile_phone) 
 	          VALUES ($1, $2, $3, $4, $5) 
 	          RETURNING id, email_address, password_hash, email_verified, email_verification_token, 
@@ -301,6 +343,21 @@ func (r *BorrowerRepository) UpdateBorrowerInfo(id int64, dateOfBirth *time.Time
 	return err
 }
 
+// UpdateBorrowerDetails updates borrower details including middle name, suffix, marital status, and phone
+func (r *BorrowerRepository) UpdateBorrowerDetails(id int64, middleName, suffix, maritalStatus *string, phone, phoneType *string) error {
+	query := `UPDATE borrower SET 
+	          middle_name = COALESCE($1, middle_name),
+	          suffix = COALESCE($2, suffix),
+	          marital_status = COALESCE($3, marital_status),
+	          mobile_phone = CASE WHEN $5 = 'MOBILE' THEN COALESCE($4, mobile_phone) ELSE mobile_phone END,
+	          home_phone = CASE WHEN $5 = 'HOME' THEN COALESCE($4, home_phone) ELSE home_phone END,
+	          work_phone = CASE WHEN $5 = 'WORK' THEN COALESCE($4, work_phone) ELSE work_phone END,
+	          updated_at = CURRENT_TIMESTAMP
+	          WHERE id = $6`
+	_, err := r.db.Exec(query, middleName, suffix, maritalStatus, phone, phoneType, id)
+	return err
+}
+
 // CreateResidence creates a residence record for a borrower
 func (r *BorrowerRepository) CreateResidence(borrowerID int64, residencyType, address, city, state, zipCode string) (int64, error) {
 	query := `INSERT INTO residence (borrower_id, residency_type, address_line_text, city_name, state_code, postal_code) 
@@ -308,6 +365,36 @@ func (r *BorrowerRepository) CreateResidence(borrowerID int64, residencyType, ad
 	var residenceID int64
 	err := r.db.QueryRow(query, borrowerID, residencyType, address, city, state, zipCode).Scan(&residenceID)
 	return residenceID, err
+}
+
+// GetCurrentResidence retrieves the current residence for a borrower
+func (r *BorrowerRepository) GetCurrentResidence(borrowerID int64) (address, city, state, zipCode string, err error) {
+	query := `SELECT address_line_text, city_name, state_code, postal_code 
+	          FROM residence 
+	          WHERE borrower_id = $1 AND residency_type = 'BorrowerCurrentResidence' 
+	          ORDER BY id DESC LIMIT 1`
+	var addr, c, s, z sql.NullString
+	err = r.db.QueryRow(query, borrowerID).Scan(&addr, &c, &s, &z)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// No residence found - return empty strings but no error
+			return "", "", "", "", nil
+		}
+		return "", "", "", "", err
+	}
+	if addr.Valid {
+		address = addr.String
+	}
+	if c.Valid {
+		city = c.String
+	}
+	if s.Valid {
+		state = s.String
+	}
+	if z.Valid {
+		zipCode = z.String
+	}
+	return address, city, state, zipCode, nil
 }
 
 // Note: deal_id has been removed from borrower table
