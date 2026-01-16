@@ -133,7 +133,7 @@ export default function LoanWantedPage() {
     }
     sessionStorage.setItem('loanWantedData', JSON.stringify(loanData))
 
-    // Navigate to borrower information form (first form)
+    // Navigate directly to borrower information form
     router.push('/buy/borrower-info-1')
   }
 

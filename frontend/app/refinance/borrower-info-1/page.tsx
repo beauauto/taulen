@@ -35,12 +35,12 @@ export default function RefinanceBorrowerInfoPage1() {
     {
       id: 'getting-started',
       title: 'Getting Started',
-      completed: true,
+      current: true,
     },
     {
       id: 'getting-to-know-you',
       title: 'Getting to Know You',
-      current: true,
+      locked: true,
     },
     {
       id: 'assets',
@@ -188,6 +188,14 @@ export default function RefinanceBorrowerInfoPage1() {
         // Store application ID for the second form
         sessionStorage.setItem('applicationId', response.data.application.id.toString())
         
+        // Store borrower data in sessionStorage for review page
+        const borrowerData = {
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+        }
+        sessionStorage.setItem('borrowerData', JSON.stringify(borrowerData))
+        
         // Initialize progress tracking - mark that borrower info has been started
         try {
           await urlaApi.updateProgressSection(
@@ -200,8 +208,8 @@ export default function RefinanceBorrowerInfoPage1() {
           // Continue anyway - progress will be initialized by the database trigger
         }
         
-        // Navigate to the second borrower info form
-        router.push('/refinance/borrower-info-2')
+        // Navigate to review page (Getting Started Summary)
+        router.push('/refinance/review')
       } else {
         setErrors({ submit: 'Failed to create application' })
       }
@@ -231,8 +239,8 @@ export default function RefinanceBorrowerInfoPage1() {
     <>
       <Form1003Layout
         sections={sections}
-        currentSectionId="getting-to-know-you"
-        title="Getting to Know You"
+        currentSectionId="getting-started"
+        title="Getting Started"
         onBack={handleBack}
       >
         <form onSubmit={handleSubmit} className="space-y-6">

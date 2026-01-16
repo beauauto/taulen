@@ -212,7 +212,7 @@ export default function BorrowerInfoPage2() {
   }
 
   const handleBack = () => {
-    router.push('/buy/borrower-info-1')
+    router.push('/buy/review')
   }
 
 

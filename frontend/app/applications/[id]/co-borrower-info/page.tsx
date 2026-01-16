@@ -118,10 +118,10 @@ export default function CoBorrowerInfoPage() {
     const newErrors: Record<string, string> = {}
 
     if (!formData.firstName.trim()) {
-      newErrors.firstName = 'Co-applicant Legal First Name is required'
+      newErrors.firstName = 'Co-applicant First Name is required'
     }
     if (!formData.lastName.trim()) {
-      newErrors.lastName = 'Co-applicant Legal Last Name is required'
+      newErrors.lastName = 'Co-applicant Last Name is required'
     }
     if (!formData.email.trim()) {
       newErrors.email = 'Co-applicant Email Address is required'
@@ -209,7 +209,7 @@ export default function CoBorrowerInfoPage() {
           <div className="space-y-4">
             <div>
               <Label htmlFor="firstName" className="text-sm font-medium text-gray-700">
-                Co-applicant Legal First Name <span className="text-red-500">*</span>
+                Co-applicant First Name <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="firstName"
@@ -244,7 +244,7 @@ export default function CoBorrowerInfoPage() {
 
             <div>
               <Label htmlFor="lastName" className="text-sm font-medium text-gray-700">
-                Co-applicant Legal Last Name <span className="text-red-500">*</span>
+                Co-applicant Last Name <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="lastName"
@@ -304,7 +304,7 @@ export default function CoBorrowerInfoPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="md:col-span-2">
                 <Label htmlFor="phone" className="text-sm font-medium text-gray-700">
-                  Phone number <span className="text-red-500">*</span>
+                  Co-applicant Phone Number <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   id="phone"

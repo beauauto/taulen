@@ -43,30 +43,43 @@ export default function BorrowerInfoPage1() {
       const applicationIdFromStorage = sessionStorage.getItem('applicationId')
       const applicationId = applicationIdParam || applicationIdFromStorage
 
-      if (applicationId) {
-        try {
-          const appResponse = await urlaApi.getApplication(parseInt(applicationId, 10))
-          const appData = appResponse.data
-          
-          if (appData?.borrower) {
-            const borrowerData = appData.borrower as any
-            setFormData(prev => ({
-              ...prev,
-              firstName: borrowerData?.firstName || prev.firstName,
-              middleName: borrowerData?.middleName || prev.middleName,
-              lastName: borrowerData?.lastName || prev.lastName,
-              suffix: borrowerData?.suffix || prev.suffix,
-              email: borrowerData?.email || prev.email,
-              confirmEmail: borrowerData?.email || prev.confirmEmail,
-              phone: borrowerData?.phone || prev.phone,
-              phoneType: borrowerData?.phoneType || prev.phoneType,
-            }))
-          }
-        } catch (error) {
+      // Only try to load from API if user is authenticated
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+      
+      // If no applicationId or no token, show form immediately (new application)
+      if (!applicationId || !token) {
+        setIsLoading(false)
+        return
+      }
+      
+      // Try to load existing data for authenticated users
+      try {
+        const appResponse = await urlaApi.getApplication(parseInt(applicationId, 10))
+        const appData = appResponse.data
+        
+        if (appData?.borrower) {
+          const borrowerData = appData.borrower as any
+          setFormData(prev => ({
+            ...prev,
+            firstName: borrowerData?.firstName || prev.firstName,
+            middleName: borrowerData?.middleName || prev.middleName,
+            lastName: borrowerData?.lastName || prev.lastName,
+            suffix: borrowerData?.suffix || prev.suffix,
+            email: borrowerData?.email || prev.email,
+            confirmEmail: borrowerData?.email || prev.confirmEmail,
+            phone: borrowerData?.phone || prev.phone,
+            phoneType: borrowerData?.phoneType || prev.phoneType,
+          }))
+        }
+      } catch (error: any) {
+        // Only log non-401 errors (401 means not authenticated, which is expected for new applications)
+        if (error.response?.status !== 401) {
           console.error('Failed to load existing application data:', error)
         }
+        // For new applications, continue without loading from API
+      } finally {
+        setIsLoading(false)
       }
-      setIsLoading(false)
     }
 
     loadExistingData()
@@ -76,12 +89,12 @@ export default function BorrowerInfoPage1() {
     {
       id: 'getting-started',
       title: 'Getting Started',
-      completed: true,
+      current: true,
     },
     {
       id: 'getting-to-know-you',
       title: 'Getting to Know You',
-      current: true,
+      locked: true,
     },
     {
       id: 'assets',
@@ -233,6 +246,14 @@ export default function BorrowerInfoPage1() {
         // Store application ID for the second form
         sessionStorage.setItem('applicationId', response.data.application.id.toString())
         
+        // Store borrower data in sessionStorage for review page
+        const borrowerData = {
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+        }
+        sessionStorage.setItem('borrowerData', JSON.stringify(borrowerData))
+        
         // Initialize progress tracking - mark that borrower info has been started
         try {
           await urlaApi.updateProgressSection(
@@ -245,8 +266,8 @@ export default function BorrowerInfoPage1() {
           // Continue anyway - progress will be initialized by the database trigger
         }
         
-        // Navigate to the second borrower info form
-        router.push('/buy/borrower-info-2')
+        // Navigate to review page (Getting Started Summary)
+        router.push('/buy/review')
       } else {
         setErrors({ submit: 'Failed to create application' })
       }
@@ -276,8 +297,8 @@ export default function BorrowerInfoPage1() {
     <>
       <Form1003Layout
         sections={sections}
-        currentSectionId="getting-to-know-you"
-        title="Getting to Know You"
+        currentSectionId="getting-started"
+        title="Getting Started"
         onBack={handleBack}
       >
         <form onSubmit={handleSubmit} className="space-y-6">

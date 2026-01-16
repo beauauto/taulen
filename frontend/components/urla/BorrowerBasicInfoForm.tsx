@@ -73,7 +73,7 @@ export function BorrowerBasicInfoForm({
       <div className="space-y-4">
         <div>
           <Label htmlFor="firstName" className="text-sm font-medium text-gray-700">
-            {useLegalLabel ? 'Legal ' : ''}First Name <span className="text-red-500">*</span>
+            First Name <span className="text-red-500">*</span>
           </Label>
           <Input
             id="firstName"
@@ -110,7 +110,7 @@ export function BorrowerBasicInfoForm({
 
         <div>
           <Label htmlFor="lastName" className="text-sm font-medium text-gray-700">
-            {useLegalLabel ? 'Legal ' : ''}Last Name <span className="text-red-500">*</span>
+            Last Name <span className="text-red-500">*</span>
           </Label>
           <Input
             id="lastName"

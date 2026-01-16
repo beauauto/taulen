@@ -109,7 +109,7 @@ export default function RefinancePage() {
     }
     sessionStorage.setItem('refinanceData', JSON.stringify(refinanceData))
 
-    // Navigate to borrower information form
+    // Navigate directly to borrower information form
     router.push('/refinance/borrower-info-1')
   }
 

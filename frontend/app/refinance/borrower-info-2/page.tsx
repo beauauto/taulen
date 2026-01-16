@@ -187,7 +187,7 @@ export default function RefinanceBorrowerInfoPage2() {
   }
 
   const handleBack = () => {
-    router.push('/refinance/borrower-info-1')
+    router.push('/refinance/review')
   }
 
   return (
