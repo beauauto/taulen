@@ -62,7 +62,7 @@ export default function CoBorrowerQuestionPage() {
 
   const handleBack = () => {
     if (applicationId) {
-      router.push(`/applications/${applicationId}/borrower`)
+      router.push(`/applications/${applicationId}`)
     }
   }
 

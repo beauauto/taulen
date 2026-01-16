@@ -91,17 +91,68 @@ export function useAuth() {
         // Borrowers should be redirected to their most recent application where they left off
         try {
           const { urlaApi } = await import('@/lib/api')
+          console.log('Fetching applications for borrower...')
+          console.log('User ID from token:', userData.id)
+          console.log('Token available:', !!authUtils.getToken())
+          
+          // Ensure token is available in localStorage before making API call
+          const token = authUtils.getToken()
+          if (!token) {
+            console.error('Token not available after login, cannot fetch applications')
+            redirectPath = '/applications'
+            throw new Error('Token not available')
+          }
+          
+          // Small delay to ensure token is available in localStorage
+          await new Promise(resolve => setTimeout(resolve, 200))
+          
+          // Verify token is still available
+          const tokenCheck = authUtils.getToken()
+          console.log('Token check before API call:', !!tokenCheck)
+          
           const appsResponse = await urlaApi.getMyApplications()
-          const applications = appsResponse.data.applications || []
+          console.log('Full applications response:', JSON.stringify(appsResponse, null, 2))
+          console.log('Response status:', appsResponse.status)
+          console.log('Response data:', appsResponse.data)
+          console.log('Response data type:', typeof appsResponse.data)
+          
+          // Handle different response formats
+          let applications: any[] = []
+          if (appsResponse && appsResponse.data) {
+            if (Array.isArray(appsResponse.data)) {
+              applications = appsResponse.data
+              console.log('Response data is array, length:', applications.length)
+            } else if (appsResponse.data.applications) {
+              applications = appsResponse.data.applications
+              console.log('Response data has applications property, length:', applications.length)
+            } else if (typeof appsResponse.data === 'object') {
+              // Try to extract applications from any object structure
+              console.warn('Unexpected response format, attempting to extract applications:', appsResponse.data)
+              // Check if it's a single application object
+              if (appsResponse.data.id) {
+                applications = [appsResponse.data]
+                console.log('Found single application object')
+              }
+            } else {
+              console.warn('Unexpected response format:', appsResponse.data)
+            }
+          } else {
+            console.warn('No data in response, full response:', appsResponse)
+          }
+          
+          console.log('Applications found:', applications.length)
+          console.log('Applications:', applications)
           
           if (applications.length > 0) {
             // Sort by lastUpdatedDate (most recent first) and get the first one
             applications.sort((a: any, b: any) => {
-              const dateA = new Date(a.lastUpdatedDate || a.createdDate).getTime()
-              const dateB = new Date(b.lastUpdatedDate || b.createdDate).getTime()
+              const dateA = new Date(a.lastUpdatedDate || a.createdDate || 0).getTime()
+              const dateB = new Date(b.lastUpdatedDate || b.createdDate || 0).getTime()
               return dateB - dateA
             })
             const mostRecentApp = applications[0]
+            console.log('Most recent application ID:', mostRecentApp.id)
+            console.log('Most recent application:', mostRecentApp)
             
             // Get application progress to determine where they left off
             try {
@@ -114,27 +165,38 @@ export function useAuth() {
               const progressPercentage = progress.progressPercentage || 0
               const nextIncompleteSection = progress.nextIncompleteSection
               
-              if (progressPercentage <= 5 && !nextIncompleteSection) {
-                // Very early stage - likely still in borrower info collection
-                // Check if we can determine the exact step, otherwise go to main form
-                redirectPath = `/applications/${mostRecentApp.id}`
-              } else {
-                // Redirect to main application form - it will handle showing the correct section
-                redirectPath = `/applications/${mostRecentApp.id}`
-              }
+              console.log('Application progress:', { progressPercentage, nextIncompleteSection })
+              
+              // Always redirect to the application page - it will handle showing the correct section
+              redirectPath = `/applications/${mostRecentApp.id}`
+              console.log('Redirecting to application:', redirectPath)
             } catch (progressError) {
               console.error('Failed to get progress, redirecting to application:', progressError)
               // Fallback to main application page
               redirectPath = `/applications/${mostRecentApp.id}`
+              console.log('Redirecting to application (fallback):', redirectPath)
             }
           } else {
-            // No applications yet - redirect to getting started
-            redirectPath = '/getting-started'
+            // No applications yet - redirect to applications page
+            // The applications page will show the option to start a new application
+            // This prevents accidentally creating a new application on login
+            console.log('No applications found, redirecting to applications page')
+            redirectPath = '/applications'
           }
-        } catch (error) {
-          console.error('Failed to fetch applications, redirecting to getting started:', error)
-          // Fallback to getting started if API call fails
-          redirectPath = '/getting-started'
+        } catch (error: any) {
+          console.error('Failed to fetch applications:', error)
+          console.error('Error details:', {
+            message: error.message,
+            response: error.response?.data,
+            status: error.response?.status,
+            config: error.config,
+          })
+          
+          // If API call fails, redirect to applications page
+          // The applications page will attempt to fetch applications and handle the case appropriately
+          // This is better than redirecting to /getting-started which would start a new application
+          console.log('Redirecting to applications page to load applications')
+          redirectPath = '/applications'
         }
       } else if (userData.userType === 'employee') {
         // Employees are routed based on their role

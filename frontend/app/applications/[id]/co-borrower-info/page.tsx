@@ -314,7 +314,6 @@ export default function CoBorrowerInfoPage() {
                   value={formData.phone}
                   onChange={(e) => handleInputChange('phone', e.target.value)}
                   className={`mt-1 ${errors.phone ? 'border-red-500' : ''}`}
-                  placeholder="(___ ) ___-____"
                   autoComplete="tel"
                 />
                 {errors.phone && (
@@ -398,7 +397,6 @@ export default function CoBorrowerInfoPage() {
                     required={!formData.liveTogether}
                     value={formData.currentAddress}
                     onClick={handleAddressFieldClick}
-                    placeholder="Click to enter address"
                     readOnly
                     className={`${errors.currentAddress ? 'border-red-500' : ''} cursor-pointer pr-10`}
                     autoComplete="street-address"

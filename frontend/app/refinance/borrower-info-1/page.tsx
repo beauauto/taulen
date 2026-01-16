@@ -179,14 +179,28 @@ export default function RefinanceBorrowerInfoPage1() {
         authUtils.setToken(response.data.accessToken)
         authUtils.setRefreshToken(response.data.refreshToken)
         if (response.data.user) {
-          authUtils.setUser(response.data.user)
+          authUtils.setUser(response.data.user as any)
         }
       }
 
-      // Store application ID for the second form
+      // Navigate to the second borrower info form
       if (response.data.application?.id) {
+        // Store application ID for the second form
         sessionStorage.setItem('applicationId', response.data.application.id.toString())
-        // Navigate to the second form
+        
+        // Initialize progress tracking - mark that borrower info has been started
+        try {
+          await urlaApi.updateProgressSection(
+            response.data.application.id,
+            'Section1a_PersonalInfo',
+            false // Not complete yet, but started
+          )
+        } catch (progressError) {
+          console.error('Failed to initialize progress:', progressError)
+          // Continue anyway - progress will be initialized by the database trigger
+        }
+        
+        // Navigate to the second borrower info form
         router.push('/refinance/borrower-info-2')
       } else {
         setErrors({ submit: 'Failed to create application' })

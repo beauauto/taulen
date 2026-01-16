@@ -127,12 +127,12 @@ function RegisterForm() {
     setIsLoading(false)
 
     if (result.success) {
-      // Registration always creates a borrower, so redirect to applicant dashboard
+      // Registration always creates a borrower, so redirect to applications page
       const redirect = searchParams.get('redirect')
       if (redirect) {
         router.push(redirect)
       } else {
-        router.push('/dashboard/applicant')
+        router.push('/applications')
       }
     } else {
       setError(result.error || 'Registration failed')

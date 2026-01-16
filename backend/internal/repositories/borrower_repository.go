@@ -42,6 +42,9 @@ type Borrower struct {
 	MobilePhone                 sql.NullString
 	WorkPhone                   sql.NullString
 	WorkPhoneExt                sql.NullString
+	MilitaryServiceStatus       sql.NullBool
+	ConsentToCreditCheck        sql.NullBool
+	ConsentToContact            sql.NullBool
 	CreatedAt                   sql.NullTime
 	UpdatedAt                   sql.NullTime
 }
@@ -358,6 +361,18 @@ func (r *BorrowerRepository) UpdateBorrowerDetails(id int64, middleName, suffix,
 	return err
 }
 
+// UpdateBorrowerConsentsAndMilitary updates military service status and consents
+func (r *BorrowerRepository) UpdateBorrowerConsentsAndMilitary(id int64, militaryServiceStatus, consentToCreditCheck, consentToContact *bool) error {
+	query := `UPDATE borrower SET 
+	          military_service_status = COALESCE($1, military_service_status),
+	          consent_to_credit_check = COALESCE($2, consent_to_credit_check),
+	          consent_to_contact = COALESCE($3, consent_to_contact),
+	          updated_at = CURRENT_TIMESTAMP
+	          WHERE id = $4`
+	_, err := r.db.Exec(query, militaryServiceStatus, consentToCreditCheck, consentToContact, id)
+	return err
+}
+
 // CreateResidence creates a residence record for a borrower
 func (r *BorrowerRepository) CreateResidence(borrowerID int64, residencyType, address, city, state, zipCode string) (int64, error) {
 	query := `INSERT INTO residence (borrower_id, residency_type, address_line_text, city_name, state_code, postal_code) 
@@ -395,6 +410,48 @@ func (r *BorrowerRepository) GetCurrentResidence(borrowerID int64) (address, cit
 		zipCode = z.String
 	}
 	return address, city, state, zipCode, nil
+}
+
+// GetCurrentResidenceID retrieves the ID of the current residence for a borrower
+func (r *BorrowerRepository) GetCurrentResidenceID(borrowerID int64) (int64, error) {
+	query := `SELECT id 
+	          FROM residence 
+	          WHERE borrower_id = $1 AND residency_type = 'BorrowerCurrentResidence' 
+	          ORDER BY id DESC LIMIT 1`
+	var residenceID int64
+	err := r.db.QueryRow(query, borrowerID).Scan(&residenceID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, nil // No residence found, return 0
+		}
+		return 0, err
+	}
+	return residenceID, nil
+}
+
+// UpdateOrCreateResidence updates existing residence or creates a new one
+func (r *BorrowerRepository) UpdateOrCreateResidence(borrowerID int64, residencyType, address, city, state, zipCode string) error {
+	// Check if residence exists
+	residenceID, err := r.GetCurrentResidenceID(borrowerID)
+	if err != nil {
+		return err
+	}
+
+	if residenceID > 0 {
+		// Update existing residence
+		query := `UPDATE residence 
+		          SET address_line_text = $1,
+		              city_name = $2,
+		              state_code = $3,
+		              postal_code = $4
+		          WHERE id = $5`
+		_, err = r.db.Exec(query, address, city, state, zipCode, residenceID)
+		return err
+	} else {
+		// Create new residence
+		_, err = r.CreateResidence(borrowerID, residencyType, address, city, state, zipCode)
+		return err
+	}
 }
 
 // Note: deal_id has been removed from borrower table

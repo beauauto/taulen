@@ -159,7 +159,6 @@ export default function RefinancePage() {
               onChange={(e) => handleInputChange('propertyAddress', e.target.value)}
               className={`mt-1 ${errors.propertyAddress ? 'border-red-500' : ''}`}
               autoComplete="street-address"
-              placeholder="Street Address, City, State Zip Code"
             />
             {errors.propertyAddress && (
               <p className="mt-1 text-sm text-red-500">{errors.propertyAddress}</p>

@@ -150,16 +150,40 @@ export default function RefinanceBorrowerInfoPage2() {
       return
     }
 
-        // TODO: Update borrower with additional info (maritalStatus, address, etc.)
-    // For now, we'll just navigate to the next step
-    // The borrower and application were already created in the first form
+    try {
+      // Parse address
+      const { streetAddress, city, state, zipCode } = parseAddress(formData.currentAddress)
 
-    // Clear session storage
-    sessionStorage.removeItem('refinanceData')
-    sessionStorage.removeItem('borrowerInfo1Data')
+      // Save borrower data (marital status, address, military status, and consents) to database
+      const { urlaApi } = await import('@/lib/api')
+      await urlaApi.saveApplication(parseInt(applicationId), {
+        borrower: {
+          maritalStatus: formData.maritalStatus,
+          currentAddress: formData.currentAddress,
+          // Include address components for backend parsing
+          address: streetAddress,
+          city: city,
+          state: state,
+          zipCode: zipCode,
+          // Military service status and consents
+          isVeteran: formData.isVeteran,
+          acceptTerms: formData.acceptTerms,
+          consentToContact: formData.consentToContact,
+        },
+      })
 
-    // Navigate to the co-borrower question page
-    router.push(`/applications/${applicationId}/co-borrower-question`)
+      // Clear session storage
+      sessionStorage.removeItem('refinanceData')
+      sessionStorage.removeItem('borrowerInfo1Data')
+
+      // Navigate to the co-borrower question page
+      router.push(`/applications/${applicationId}/co-borrower-question`)
+    } catch (error: any) {
+      console.error('Failed to save borrower information:', error)
+      setErrors({ 
+        submit: error.response?.data?.error || error.message || 'Failed to save information. Please try again.' 
+      })
+    }
   }
 
   const handleBack = () => {
@@ -231,7 +255,6 @@ export default function RefinanceBorrowerInfoPage2() {
                 required
                 value={formData.currentAddress}
                 onClick={handleAddressFieldClick}
-                placeholder="Click to enter address"
                 readOnly
                 className={`${errors.currentAddress ? 'border-red-500' : ''} cursor-pointer pr-10`}
                 autoComplete="street-address"

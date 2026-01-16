@@ -31,7 +31,7 @@ export default function EmployeeDashboard() {
     }
 
     if (!isLoading && user && user.userType !== 'employee') {
-      router.push('/dashboard/applicant')
+      router.push('/applications')
       return
     }
 

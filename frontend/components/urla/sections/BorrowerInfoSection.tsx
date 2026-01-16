@@ -166,7 +166,6 @@ export function BorrowerInfoSection({ data, onChange, errors }: BorrowerInfoSect
             const formatted = value.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')
             updateField('phone', formatted)
           }}
-          placeholder="(555) 123-4567"
           maxLength={14}
         />
       </div>

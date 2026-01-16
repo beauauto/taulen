@@ -10,6 +10,7 @@ import { EmploymentSection } from './sections/EmploymentSection'
 import { IncomeSection } from './sections/IncomeSection'
 import { AssetsSection } from './sections/AssetsSection'
 import { LiabilitiesSection } from './sections/LiabilitiesSection'
+import { Form1003Layout, FormSection } from './Form1003Layout'
 import { URLAFormData } from '@/types/urla'
 import { urlaApi } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
@@ -114,20 +115,69 @@ export function FormWizard({ applicationId, initialData }: FormWizardProps) {
     }
   }, [user, initialData])
 
-  // Load progress on mount and when applicationId changes
+  // Load application data and progress on mount and when applicationId changes
   useEffect(() => {
     if (!applicationId) return
 
-    const loadProgress = async () => {
+    const loadApplicationData = async () => {
       setIsLoadingProgress(true)
       try {
-        const response = await urlaApi.getApplicationProgress(applicationId)
-        const progress = response.data
+        // Load application data from database
+        const appResponse = await urlaApi.getApplication(applicationId)
+        const appData = appResponse.data
+        
+        // Load progress
+        const progressResponse = await urlaApi.getApplicationProgress(applicationId)
+        const progress = progressResponse.data
+        
         setProgressData({
           progressPercentage: progress.progressPercentage || 0,
           sections: progress.sections || {},
           nextIncompleteSection: progress.nextIncompleteSection,
         })
+
+        // Load saved form data from application
+        if (appData) {
+          const borrowerData = appData.borrower as any
+          const savedFormData: Partial<URLAFormData> = {
+            borrower: {
+              firstName: borrowerData?.firstName || '',
+              lastName: borrowerData?.lastName || '',
+              middleName: borrowerData?.middleName || '',
+              suffix: borrowerData?.suffix || '',
+              email: borrowerData?.email || '',
+              phone: borrowerData?.phone || '',
+              ssn: borrowerData?.ssn || '',
+              dateOfBirth: borrowerData?.dateOfBirth || '',
+              maritalStatus: borrowerData?.maritalStatus || '',
+              dependentsCount: borrowerData?.dependentsCount || 0,
+              citizenshipStatus: borrowerData?.citizenshipStatus || '',
+            },
+            property: appData.property ? {
+              streetAddress: (appData.property as any).streetAddress || '',
+              city: (appData.property as any).city || '',
+              state: (appData.property as any).state || '',
+              zipCode: (appData.property as any).zipCode || '',
+              propertyType: (appData.property as any).propertyType || '',
+              propertyUsage: (appData.property as any).propertyUsage || '',
+            } : undefined,
+            employment: appData.employment as any,
+            income: appData.income as any,
+            assets: appData.assets as any,
+            liabilities: appData.liabilities as any,
+          }
+          
+          // Merge with initial data (initialData takes precedence for pre-application flow)
+          setFormData((prev) => ({
+            ...prev,
+            ...savedFormData,
+            borrower: {
+              ...savedFormData.borrower!,
+              ...initialData?.borrower,
+            },
+            property: savedFormData.property || initialData?.property || prev.property,
+          }))
+        }
 
         // Navigate to next incomplete section if available
         if (progress.nextIncompleteSection) {
@@ -139,32 +189,44 @@ export function FormWizard({ applicationId, initialData }: FormWizardProps) {
           }
         }
       } catch (error) {
-        console.error('Failed to load progress:', error)
+        console.error('Failed to load application data:', error)
       } finally {
         setIsLoadingProgress(false)
       }
     }
 
-    loadProgress()
+    loadApplicationData()
   }, [applicationId])
 
   // Auto-save on form data changes (debounced)
   useEffect(() => {
-    if (!applicationId) return
+    if (!applicationId || isLoadingProgress) return
 
     const timer = setTimeout(() => {
       handleAutoSave()
     }, 2000) // Auto-save after 2 seconds of inactivity
 
     return () => clearTimeout(timer)
-  }, [formData, applicationId])
+  }, [formData, applicationId, isLoadingProgress])
 
   const handleAutoSave = async () => {
-    if (!applicationId || isSaving) return
+    if (!applicationId || isSaving || isLoadingProgress) return
 
     setIsSaving(true)
     try {
+      // Save form data to database
       await urlaApi.saveApplication(applicationId, formData)
+      
+      // Also update progress to track current section
+      const currentSection = FORM_SECTIONS[currentStep]
+      if (currentSection) {
+        // Update last_updated_section to track where user is (without marking as complete)
+        await urlaApi.updateProgressSection(
+          applicationId,
+          currentSection.urlaSection,
+          false // Not complete, just tracking position
+        )
+      }
     } catch (error) {
       console.error('Auto-save failed:', error)
     } finally {
@@ -260,75 +322,88 @@ export function FormWizard({ applicationId, initialData }: FormWizardProps) {
     }
   }
 
-  // Use backend progress percentage if available, otherwise calculate from current step
+  // Build sections for Form1003Layout based on progress
+  const buildSections = (): FormSection[] => {
+    return FORM_SECTIONS.map((section, index) => {
+      const sectionKey = mapURLASectionToKey(section.urlaSection)
+      const isComplete = progressData?.sections[sectionKey] || false
+      const isCurrent = index === currentStep
+      
+      return {
+        id: section.id,
+        title: section.title,
+        completed: isComplete,
+        current: isCurrent,
+        locked: !isComplete && !isCurrent && index > currentStep,
+      }
+    })
+  }
+
+  const sections = buildSections()
+  const currentSection = FORM_SECTIONS[currentStep]
   const progress = progressData?.progressPercentage ?? ((currentStep + 1) / FORM_SECTIONS.length) * 100
 
-  return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Mobile Header */}
-      <div className="sticky top-0 z-10 bg-white border-b shadow-sm">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between mb-2">
-            <h1 className="text-lg font-semibold">Mortgage Application</h1>
-            {isSaving && (
-              <span className="text-xs text-gray-500">Saving...</span>
-            )}
+  // Show loading state while fetching application data
+  if (isLoadingProgress) {
+    return (
+      <Form1003Layout
+        sections={sections}
+        currentSectionId={currentSection.id}
+        title="Loading..."
+        showNavigation={true}
+      >
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="text-gray-500 mb-2">Loading application...</div>
+            <div className="text-sm text-gray-400">Please wait while we load your saved data</div>
           </div>
-          {/* Progress Bar */}
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <p className="text-xs text-gray-500 mt-1">
-            {progressData ? (
-              <>Progress: {progressData.progressPercentage}% complete</>
-            ) : (
-              <>Step {currentStep + 1} of {FORM_SECTIONS.length}</>
-            )}
-          </p>
         </div>
-      </div>
+      </Form1003Layout>
+    )
+  }
 
-      {/* Section Navigation (Mobile - Horizontal Scroll) */}
-      <div className="bg-white border-b overflow-x-auto">
-        <div className="flex space-x-1 px-4 py-2 min-w-max">
-          {FORM_SECTIONS.map((section, index) => {
-            // Check if section is complete from progress data
-            const sectionKey = mapURLASectionToKey(section.urlaSection)
-            const isComplete = progressData?.sections[sectionKey] || false
-            
-            return (
-              <button
-                key={section.id}
-                onClick={() => setCurrentStep(index)}
-                className={`flex-shrink-0 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  index === currentStep
-                    ? 'bg-blue-50 text-blue-700'
-                    : isComplete
-                    ? 'bg-green-50 text-green-700'
-                    : index < currentStep
-                    ? 'bg-gray-100 text-gray-700'
-                    : 'text-gray-400'
-                }`}
-              >
-                <span className="mr-1">{section.icon}</span>
-                <span className="hidden sm:inline">{section.title}</span>
-                <span className="sm:hidden">{index + 1}</span>
-                {isComplete && <span className="ml-1">✓</span>}
-              </button>
+  const handleSectionClick = async (sectionId: string) => {
+    const sectionIndex = FORM_SECTIONS.findIndex((s) => s.id === sectionId)
+    if (sectionIndex !== -1) {
+      // Save current section before navigating
+      if (applicationId && currentStep !== sectionIndex) {
+        const currentSection = FORM_SECTIONS[currentStep]
+        if (currentSection) {
+          try {
+            // Update last_updated_section to track navigation
+            await urlaApi.updateProgressSection(
+              applicationId,
+              currentSection.urlaSection,
+              false // Not marking as complete, just tracking position
             )
-          })}
-        </div>
-      </div>
+          } catch (error) {
+            console.error('Failed to update section on navigation:', error)
+          }
+        }
+      }
+      setCurrentStep(sectionIndex)
+    }
+  }
 
-      {/* Form Content */}
-      <div className="max-w-2xl mx-auto px-4 py-6">
+  return (
+    <Form1003Layout
+      sections={sections}
+      currentSectionId={currentSection.id}
+      title={currentSection.title}
+      showNavigation={true}
+      onSectionClick={handleSectionClick}
+    >
+      <div className="space-y-6">
+        {isSaving && (
+          <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2 rounded text-sm">
+            Saving...
+          </div>
+        )}
+        
         <Card>
           <CardHeader>
             <CardTitle className="text-xl">
-              {FORM_SECTIONS[currentStep].icon} {FORM_SECTIONS[currentStep].title}
+              {currentSection.icon} {currentSection.title}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -388,18 +463,18 @@ export function FormWizard({ applicationId, initialData }: FormWizardProps) {
             Previous
           </Button>
           {currentStep < FORM_SECTIONS.length - 1 ? (
-            <Button onClick={handleNext} className="flex-1">
+            <Button onClick={handleNext} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white">
               Next
             </Button>
           ) : (
             <div className="flex justify-center w-full">
-              <Button onClick={handleSubmit} className="max-w-md w-full">
+              <Button onClick={handleSubmit} className="max-w-md w-full bg-amber-600 hover:bg-amber-700 text-white">
                 Submit Application
               </Button>
             </div>
           )}
         </div>
       </div>
-    </div>
+    </Form1003Layout>
   )
 }

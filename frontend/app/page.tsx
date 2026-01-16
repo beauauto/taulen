@@ -1,12 +1,58 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import { TopMenu } from '@/components/layout/TopMenu'
+import { useAuth } from '@/hooks/useAuth'
+import { urlaApi } from '@/lib/api'
 
 export default function HomePage() {
   const router = useRouter()
+  const { user, isAuthenticated, isLoading } = useAuth()
+
+  // Redirect authenticated borrowers to their landing page
+  useEffect(() => {
+    if (!isLoading && isAuthenticated && user?.userType === 'applicant') {
+      const redirectBorrower = async () => {
+        try {
+          // Fetch applications to determine redirect path
+          const appsResponse = await urlaApi.getMyApplications()
+          let applications: any[] = []
+          
+          if (appsResponse && appsResponse.data) {
+            if (Array.isArray(appsResponse.data)) {
+              applications = appsResponse.data
+            } else if (appsResponse.data.applications) {
+              applications = appsResponse.data.applications
+            }
+          }
+
+          if (applications.length > 0) {
+            // Sort by lastUpdatedDate (most recent first)
+            applications.sort((a: any, b: any) => {
+              const dateA = new Date(a.lastUpdatedDate || a.createdDate || 0).getTime()
+              const dateB = new Date(b.lastUpdatedDate || b.createdDate || 0).getTime()
+              return dateB - dateA
+            })
+            const mostRecentApp = applications[0]
+            // Redirect to their most recent application
+            router.replace(`/applications/${mostRecentApp.id}`)
+          } else {
+            // No applications - redirect to applications page (which shows "Starting Your First Application")
+            router.replace('/applications')
+          }
+        } catch (error) {
+          console.error('Failed to fetch applications for redirect:', error)
+          // Fallback to applications page
+          router.replace('/applications')
+        }
+      }
+
+      redirectBorrower()
+    }
+  }, [isLoading, isAuthenticated, user, router])
 
   const handleContinue = () => {
     // Navigate to the getting started page
@@ -74,32 +120,9 @@ export default function HomePage() {
           <div className="h-[25vh] lg:h-[calc(25vh-120px)]"></div>
           <div className="p-4 lg:p-0 lg:pr-[5%] lg:pb-[5%] lg:pl-[5%] lg:mt-[120px] lg:min-h-[calc(75vh-49px)]">
             <div className="max-w-[550px] mx-auto">
-              {/* Step Indicator */}
-              <div className="mb-6 lg:mb-8">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs lg:text-sm font-semibold text-amber-600 uppercase tracking-wide">
-                      Step 1 of 3
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      {[1, 2, 3].map((num) => (
-                        <div
-                          key={num}
-                          className={`rounded-full ${
-                            num === 1
-                              ? 'w-3 h-3 bg-amber-600 border-2 border-amber-600'
-                              : 'w-2.5 h-2.5 bg-gray-300 border-2 border-gray-300'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               {/* Steps Timeline */}
               <div className="mb-8">
-                <h2 className="text-[10px] lg:text-[11px] font-bold text-[#757575] uppercase tracking-wider mb-4 lg:mb-6 pl-1">
+                <h2 className="text-lg lg:text-xl xl:text-2xl font-bold text-amber-600 uppercase tracking-wider mb-4 lg:mb-6 pl-1">
                   Your Mortgage Journey
                 </h2>
                 <div className="border-l-2 border-[#E0E0E0] pl-8 lg:pl-10 xl:pl-14">

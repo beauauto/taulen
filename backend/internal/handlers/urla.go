@@ -105,7 +105,30 @@ func (h *URLAHandler) UpdateApplicationStatus(c *gin.Context) {
 
 // SaveApplication handles saving application data (auto-save)
 func (h *URLAHandler) SaveApplication(c *gin.Context) {
-	// TODO: Implement auto-save functionality
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid application ID"})
+		return
+	}
+
+	var req map[string]interface{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Save borrower information if provided
+	if borrowerData, ok := req["borrower"].(map[string]interface{}); ok {
+		err = h.urlaService.SaveBorrowerData(id, borrowerData)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save borrower data: " + err.Error()})
+			return
+		}
+	}
+
+	// TODO: Save other sections (property, employment, income, assets, liabilities) as needed
+
 	c.JSON(http.StatusOK, gin.H{"message": "Application saved"})
 }
 
@@ -188,21 +211,25 @@ func (h *URLAHandler) GetMyApplications(c *gin.Context) {
 		return
 	}
 
-	// Get user type from context (we'll need to add this to middleware)
-	// For now, try employee first, then borrower
-	applications, err := h.urlaService.GetApplicationsByEmployee(userID)
-	if err != nil {
-		// Try as borrower
-		borrowerID, parseErr := strconv.ParseInt(userID, 10, 64)
-		if parseErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID"})
-			return
-		}
-		applications, err = h.urlaService.GetApplicationsByBorrower(borrowerID)
+	// Determine if userID is a borrower (numeric) or employee (UUID)
+	// Borrowers have numeric IDs, employees have UUID strings
+	borrowerID, parseErr := strconv.ParseInt(userID, 10, 64)
+	if parseErr == nil {
+		// It's a borrower ID (numeric) - get borrower applications
+		applications, err := h.urlaService.GetApplicationsByBorrower(borrowerID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve applications"})
 			return
 		}
+		c.JSON(http.StatusOK, gin.H{"applications": applications})
+		return
+	}
+
+	// It's an employee UUID - get employee applications
+	applications, err := h.urlaService.GetApplicationsByEmployee(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve applications"})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"applications": applications})

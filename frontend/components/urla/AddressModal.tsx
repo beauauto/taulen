@@ -174,7 +174,6 @@ export function AddressModal({ isOpen, onClose, onSave, initialAddress }: Addres
               type="text"
               value={addressData.street}
               onChange={(e) => handleInputChange('street', e.target.value)}
-              placeholder="123 Main Street"
               className={errors.street ? 'border-red-500' : ''}
               autoComplete="street-address"
             />
@@ -193,7 +192,6 @@ export function AddressModal({ isOpen, onClose, onSave, initialAddress }: Addres
               type="text"
               value={addressData.city}
               onChange={(e) => handleInputChange('city', e.target.value)}
-              placeholder="New York"
               className={errors.city ? 'border-red-500' : ''}
               autoComplete="address-level2"
             />
@@ -213,7 +211,6 @@ export function AddressModal({ isOpen, onClose, onSave, initialAddress }: Addres
                 type="text"
                 value={addressData.state}
                 onChange={(e) => handleInputChange('state', e.target.value)}
-                placeholder="NY"
                 maxLength={2}
                 className={errors.state ? 'border-red-500' : ''}
                 autoComplete="address-level1"
@@ -232,7 +229,6 @@ export function AddressModal({ isOpen, onClose, onSave, initialAddress }: Addres
                 type="text"
                 value={addressData.zipCode}
                 onChange={(e) => handleInputChange('zipCode', e.target.value)}
-                placeholder="10001"
                 maxLength={10}
                 className={errors.zipCode ? 'border-red-500' : ''}
                 autoComplete="postal-code"

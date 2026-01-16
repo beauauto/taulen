@@ -78,8 +78,10 @@ interface Form1003LayoutProps {
   currentSectionId: string
   title: string
   onBack?: () => void
+  onSectionClick?: (sectionId: string) => void
   children: ReactNode
   showNavigation?: boolean
+  showTopMenu?: boolean
 }
 
 export function Form1003Layout({
@@ -87,8 +89,10 @@ export function Form1003Layout({
   currentSectionId,
   title,
   onBack,
+  onSectionClick,
   children,
   showNavigation = true,
+  showTopMenu = true,
 }: Form1003LayoutProps) {
   const pathname = usePathname()
 
@@ -100,7 +104,7 @@ export function Form1003Layout({
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
-      <TopMenu showNavigation={showNavigation} navItems={navItems} onBack={onBack} />
+      {showTopMenu && <TopMenu showNavigation={showNavigation} navItems={navItems} onBack={onBack} />}
 
       {/* Main Content Area with Sidebar */}
       <div className="flex flex-1 min-h-0">
@@ -127,6 +131,11 @@ export function Form1003Layout({
                           : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
                       )}
                       disabled={isLocked}
+                      onClick={() => {
+                        if (!isLocked && onSectionClick) {
+                          onSectionClick(section.id)
+                        }
+                      }}
                       aria-current={isCurrent ? 'page' : undefined}
                     >
                       <div className="flex items-center gap-3 relative z-10">

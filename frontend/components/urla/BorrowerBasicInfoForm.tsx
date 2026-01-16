@@ -213,7 +213,6 @@ export function BorrowerBasicInfoForm({
                 }
               }}
               className={`mt-1 ${errors.phone ? 'border-red-500' : ''}`}
-              placeholder={showPhoneType ? "(___ ) ___-____" : "(555) 123-4567"}
               maxLength={showPhoneType ? undefined : 14}
               autoComplete="tel"
             />
@@ -293,7 +292,6 @@ export function BorrowerBasicInfoForm({
                 required={addressRequired}
                 value={formData.currentAddress}
                 onClick={handleAddressFieldClick}
-                placeholder="Click to enter address"
                 readOnly
                 className={`${errors.currentAddress ? 'border-red-500' : ''} cursor-pointer pr-10`}
                 autoComplete="street-address"
