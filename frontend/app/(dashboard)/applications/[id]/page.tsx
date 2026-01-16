@@ -12,6 +12,7 @@ function ApplicationForm() {
   const applicationId = params?.id ? parseInt(params.id as string, 10) : undefined
   const [initialData, setInitialData] = useState<Partial<URLAFormData> | undefined>(undefined)
   const [showIntro, setShowIntro] = useState(true)
+  const [isLoadingProgress, setIsLoadingProgress] = useState(true)
 
   useEffect(() => {
     // Load pre-application data from sessionStorage if available
@@ -48,11 +49,38 @@ function ApplicationForm() {
       }
     }
 
-    // Check if user has already seen intro (stored in sessionStorage)
-    const hasSeenIntro = sessionStorage.getItem(`form1003_intro_seen_${applicationId}`)
-    if (hasSeenIntro === 'true') {
-      setShowIntro(false)
+    // Check application progress to determine if intro should be shown
+    const checkProgress = async () => {
+      if (!applicationId) {
+        setIsLoadingProgress(false)
+        return
+      }
+
+      try {
+        const { urlaApi } = await import('@/lib/api')
+        const progressResponse = await urlaApi.getApplicationProgress(applicationId)
+        const progress = progressResponse.data
+        const progressPercentage = progress.progressPercentage || 0
+
+        // If user has made progress (> 0%), skip intro and go straight to form
+        // Also check if they've seen intro before
+        const hasSeenIntro = sessionStorage.getItem(`form1003_intro_seen_${applicationId}`)
+        if (progressPercentage > 0 || hasSeenIntro === 'true') {
+          setShowIntro(false)
+        }
+      } catch (error) {
+        console.error('Failed to load progress:', error)
+        // On error, check sessionStorage fallback
+        const hasSeenIntro = sessionStorage.getItem(`form1003_intro_seen_${applicationId}`)
+        if (hasSeenIntro === 'true') {
+          setShowIntro(false)
+        }
+      } finally {
+        setIsLoadingProgress(false)
+      }
     }
+
+    checkProgress()
   }, [applicationId])
 
   const handleStartForm = () => {
@@ -75,7 +103,16 @@ function ApplicationForm() {
     )
   }
 
-  // Show intro page first
+  // Show loading state while checking progress
+  if (isLoadingProgress) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center text-gray-500">Loading...</div>
+      </div>
+    )
+  }
+
+  // Show intro page first (only if no progress and hasn't been seen)
   if (showIntro) {
     return <Form1003Intro applicationId={applicationId} onStart={handleStartForm} />
   }

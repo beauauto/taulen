@@ -88,8 +88,7 @@ export function useAuth() {
       let redirectPath = '/dashboard'
       
       if (userData.userType === 'applicant') {
-        // Borrowers go to their first application's borrower page (replicating borrower-htmlonly.html)
-        // Fetch applications and redirect to the first one
+        // Borrowers should be redirected to their most recent application where they left off
         try {
           const { urlaApi } = await import('@/lib/api')
           const appsResponse = await urlaApi.getMyApplications()
@@ -102,27 +101,40 @@ export function useAuth() {
               const dateB = new Date(b.lastUpdatedDate || b.createdDate).getTime()
               return dateB - dateA
             })
-            const firstApp = applications[0]
-            redirectPath = `/applications/${firstApp.id}/borrower`
-          } else {
-            // No applications yet - create a default one and redirect to borrower page
+            const mostRecentApp = applications[0]
+            
+            // Get application progress to determine where they left off
             try {
-              const newAppResponse = await urlaApi.createApplication({
-                loanType: 'Conventional',
-                loanPurpose: 'Purchase', // Default, can be updated later
-                loanAmount: 1, // Minimum required
-              })
-              redirectPath = `/applications/${newAppResponse.data.id}/borrower`
-            } catch (createError) {
-              console.error('Failed to create application, redirecting to dashboard:', createError)
-              // Fallback to dashboard if creation fails
-              redirectPath = '/dashboard/applicant'
+              const progressResponse = await urlaApi.getApplicationProgress(mostRecentApp.id)
+              const progress = progressResponse.data
+              
+              // Determine redirect path based on progress
+              // If progress is very low (0-5%), they likely haven't completed borrower info
+              // Otherwise, redirect to main application form which will show the next incomplete section
+              const progressPercentage = progress.progressPercentage || 0
+              const nextIncompleteSection = progress.nextIncompleteSection
+              
+              if (progressPercentage <= 5 && !nextIncompleteSection) {
+                // Very early stage - likely still in borrower info collection
+                // Check if we can determine the exact step, otherwise go to main form
+                redirectPath = `/applications/${mostRecentApp.id}`
+              } else {
+                // Redirect to main application form - it will handle showing the correct section
+                redirectPath = `/applications/${mostRecentApp.id}`
+              }
+            } catch (progressError) {
+              console.error('Failed to get progress, redirecting to application:', progressError)
+              // Fallback to main application page
+              redirectPath = `/applications/${mostRecentApp.id}`
             }
+          } else {
+            // No applications yet - redirect to getting started
+            redirectPath = '/getting-started'
           }
         } catch (error) {
-          console.error('Failed to fetch applications, redirecting to dashboard:', error)
-          // Fallback to dashboard if API call fails
-          redirectPath = '/dashboard/applicant'
+          console.error('Failed to fetch applications, redirecting to getting started:', error)
+          // Fallback to getting started if API call fails
+          redirectPath = '/getting-started'
         }
       } else if (userData.userType === 'employee') {
         // Employees are routed based on their role
