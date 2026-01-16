@@ -1,16 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Form1003Layout, FormSection } from '@/components/urla/Form1003Layout'
-import { Select } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
-import { urlaApi } from '@/lib/api'
 
 export default function RefinanceBorrowerInfoPage() {
+  const router = useRouter()
+
+  useEffect(() => {
+    // Redirect to the first form
+    router.replace('/refinance/borrower-info-1')
+  }, [router])
+
+  return null
   const router = useRouter()
   const [formData, setFormData] = useState({
     firstName: '',
@@ -19,6 +20,8 @@ export default function RefinanceBorrowerInfoPage() {
     suffix: '',
     email: '',
     confirmEmail: '',
+    password: '',
+    confirmPassword: '',
     phone: '',
     phoneType: '',
     maritalStatus: '',
@@ -29,6 +32,7 @@ export default function RefinanceBorrowerInfoPage() {
     consentToContact: false,
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [isAddressModalOpen, setIsAddressModalOpen] = useState(false)
 
   const sections: FormSection[] = [
     {
@@ -99,6 +103,16 @@ export default function RefinanceBorrowerInfoPage() {
     } else if (formData.email !== formData.confirmEmail) {
       newErrors.confirmEmail = 'Email addresses do not match'
     }
+    if (!formData.password.trim()) {
+      newErrors.password = 'Password is required'
+    } else if (formData.password.length < 8) {
+      newErrors.password = 'Password must be at least 8 characters long'
+    }
+    if (!formData.confirmPassword.trim()) {
+      newErrors.confirmPassword = 'Please confirm your password'
+    } else if (formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = 'Passwords do not match'
+    }
     if (!formData.phone.trim()) {
       newErrors.phone = 'Phone number is required'
     }
@@ -148,6 +162,17 @@ export default function RefinanceBorrowerInfoPage() {
     return { streetAddress: address, city: '', state: '', zipCode: '' }
   }
 
+  const handleAddressSave = (addressData: AddressData) => {
+    // Format address as "Street, City, State Zip"
+    const formattedAddress = `${addressData.street}, ${addressData.city}, ${addressData.state} ${addressData.zipCode}`
+    handleInputChange('currentAddress', formattedAddress)
+    setIsAddressModalOpen(false)
+  }
+
+  const handleAddressFieldClick = () => {
+    setIsAddressModalOpen(true)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -163,10 +188,6 @@ export default function RefinanceBorrowerInfoPage() {
       // Parse current address
       const { streetAddress, city, state, zipCode } = parseAddress(formData.currentAddress)
 
-      // Generate a temporary password (in production, you might want to ask for password)
-      // For now, generate a random password
-      const tempPassword = Math.random().toString(36).slice(-12) + 'A1!'
-
       // Prepare API request
       const requestData = {
         email: formData.email,
@@ -177,7 +198,7 @@ export default function RefinanceBorrowerInfoPage() {
         phone: formData.phone.replace(/\D/g, ''), // Remove non-digits
         phoneType: formData.phoneType || undefined,
         maritalStatus: formData.maritalStatus || undefined,
-        password: tempPassword,
+        password: formData.password,
         dateOfBirth: '', // Not collected in this form, can be added later
         address: streetAddress,
         city: city,
@@ -191,25 +212,40 @@ export default function RefinanceBorrowerInfoPage() {
       // Call API to create borrower and application
       const response = await urlaApi.verifyAndCreateBorrower(requestData)
 
-      // Save tokens
+      // Save tokens using auth utils
       if (response.data.accessToken) {
-        localStorage.setItem('token', response.data.accessToken)
-        localStorage.setItem('refreshToken', response.data.refreshToken)
+        authUtils.setToken(response.data.accessToken)
+        authUtils.setRefreshToken(response.data.refreshToken)
         if (response.data.user) {
-          localStorage.setItem('user', JSON.stringify(response.data.user))
+          authUtils.setUser(response.data.user)
         }
       }
 
-      // Navigate to the application page
+      // Clear session storage after successful creation
+      sessionStorage.removeItem('refinanceData')
+
+      // Navigate to the co-borrower question page
       if (response.data.application?.id) {
-        router.push(`/applications/${response.data.application.id}/borrower`)
+        router.push(`/applications/${response.data.application.id}/co-borrower-question`)
       } else {
         router.push('/applications')
       }
     } catch (error: any) {
-      const errorMessage = error.response?.data?.error || error.message || 'Failed to create application'
-      setErrors({ submit: errorMessage })
       console.error('Error creating application:', error)
+      let errorMessage = 'Failed to create application'
+      
+      if (error.response) {
+        // Server responded with error
+        errorMessage = error.response.data?.error || error.response.data?.message || `Server error: ${error.response.status}`
+      } else if (error.request) {
+        // Request was made but no response received
+        errorMessage = 'Network error: Unable to connect to server. Please check if the backend server is running.'
+      } else {
+        // Something else happened
+        errorMessage = error.message || 'An unexpected error occurred'
+      }
+      
+      setErrors({ submit: errorMessage })
     }
   }
 
@@ -218,6 +254,7 @@ export default function RefinanceBorrowerInfoPage() {
   }
 
   return (
+    <>
     <Form1003Layout
       sections={sections}
       currentSectionId="getting-to-know-you"
@@ -362,6 +399,49 @@ export default function RefinanceBorrowerInfoPage() {
             )}
           </div>
 
+          {/* Password */}
+          <div>
+            <Label htmlFor="password" className="text-sm font-medium text-gray-700">
+              Password <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="password"
+              name="password"
+              type="password"
+              required
+              value={formData.password}
+              onChange={(e) => handleInputChange('password', e.target.value)}
+              className={`mt-1 ${errors.password ? 'border-red-500' : ''}`}
+              autoComplete="new-password"
+            />
+            {errors.password && (
+              <p className="mt-1 text-sm text-red-500">{errors.password}</p>
+            )}
+            <p className="mt-1 text-xs text-gray-500">
+              Password must be at least 8 characters long
+            </p>
+          </div>
+
+          {/* Confirm Password */}
+          <div>
+            <Label htmlFor="confirmPassword" className="text-sm font-medium text-gray-700">
+              Confirm Password <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="confirmPassword"
+              name="confirmPassword"
+              type="password"
+              required
+              value={formData.confirmPassword}
+              onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+              className={`mt-1 ${errors.confirmPassword ? 'border-red-500' : ''}`}
+              autoComplete="new-password"
+            />
+            {errors.confirmPassword && (
+              <p className="mt-1 text-sm text-red-500">{errors.confirmPassword}</p>
+            )}
+          </div>
+
           {/* Phone Number and Type */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-2">
@@ -443,19 +523,34 @@ export default function RefinanceBorrowerInfoPage() {
             <Label htmlFor="currentAddress" className="text-sm font-medium text-gray-700">
               Current Address <span className="text-red-500">*</span>
             </Label>
-            <Input
-              id="currentAddress"
-              name="currentAddress"
-              type="text"
-              required
-              value={formData.currentAddress}
-              onChange={(e) => handleInputChange('currentAddress', e.target.value)}
-              className={`mt-1 ${errors.currentAddress ? 'border-red-500' : ''}`}
-              autoComplete="street-address"
-            />
+            <div className="relative mt-1">
+              <Input
+                id="currentAddress"
+                name="currentAddress"
+                type="text"
+                required
+                value={formData.currentAddress}
+                onClick={handleAddressFieldClick}
+                placeholder="Click to enter address"
+                readOnly
+                className={`${errors.currentAddress ? 'border-red-500' : ''} cursor-pointer pr-10`}
+                autoComplete="street-address"
+              />
+              <button
+                type="button"
+                onClick={handleAddressFieldClick}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-indigo-600 transition-colors"
+                aria-label="Edit address"
+              >
+                <MapPin className="w-5 h-5" />
+              </button>
+            </div>
             {errors.currentAddress && (
               <p className="mt-1 text-sm text-red-500">{errors.currentAddress}</p>
             )}
+            <p className="mt-1 text-xs text-gray-500">
+              Click the field or icon to enter your address
+            </p>
           </div>
 
           {/* Same as Mailing Address Toggle */}
@@ -526,5 +621,13 @@ export default function RefinanceBorrowerInfoPage() {
         </div>
       </form>
     </Form1003Layout>
+    {/* Address Modal */}
+    <AddressModal
+      isOpen={isAddressModalOpen}
+      onClose={() => setIsAddressModalOpen(false)}
+      onSave={handleAddressSave}
+      initialAddress={formData.currentAddress}
+    />
+  </>
   )
 }

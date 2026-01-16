@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { TopMenu } from '@/components/layout/TopMenu'
 
 function LoginForm() {
   const router = useRouter()
@@ -48,32 +49,26 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <TopMenu showNavigation={false} />
+      <div className="flex-1 flex items-center justify-center">
+        <Card className="w-full max-w-md bg-white border-gray-200 shadow-sm">
         <CardHeader>
-          <CardTitle className="text-2xl text-center">Sign in to Taulen</CardTitle>
-          <CardDescription className="text-center">
+          <CardTitle className="text-2xl text-center text-gray-900">Sign in to Taulen</CardTitle>
+          <CardDescription className="text-center text-gray-600">
             Enter your email and password to access your account
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
             {error && (
-              <div className="bg-red-50 border-2 border-red-300 text-red-800 px-4 py-3 rounded-md shadow-sm">
-                <div className="flex items-start">
-                  <svg className="w-5 h-5 text-red-600 mt-0.5 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                  <div className="flex-1">
-                    <p className="font-medium">Login Failed</p>
-                    <p className="text-sm mt-1">{error}</p>
-                  </div>
-                </div>
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+                {error}
               </div>
             )}
             
             <div className="space-y-2">
-              <label htmlFor="email" className="text-sm font-medium">
+              <label htmlFor="email" className="text-sm font-medium text-gray-700">
                 Email
               </label>
               <Input
@@ -88,7 +83,7 @@ function LoginForm() {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-medium">
+              <label htmlFor="password" className="text-sm font-medium text-gray-700">
                 Password
               </label>
               <Input
@@ -102,19 +97,24 @@ function LoginForm() {
               />
             </div>
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button 
+              type="submit" 
+              className="w-full bg-amber-600 hover:bg-amber-700 text-white font-normal text-base py-4 px-8 h-[55px] rounded transition-colors shadow-sm" 
+              disabled={isLoading}
+            >
               {isLoading ? 'Signing in...' : 'Sign in'}
             </Button>
 
             <div className="text-center text-sm text-gray-600">
               Don&apos;t have an account?{' '}
-              <a href="/register" className="text-blue-600 hover:underline">
+              <a href="/register" className="text-indigo-600 hover:text-indigo-700 hover:underline">
                 Sign up
               </a>
             </div>
           </form>
         </CardContent>
       </Card>
+      </div>
     </div>
   )
 }

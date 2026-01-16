@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
+import { TopMenu } from '@/components/layout/TopMenu'
 
 export default function HomePage() {
   const router = useRouter()
@@ -29,30 +30,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-[#F3F3F3] flex flex-col">
-      {/* Top Menu Bar */}
-      <nav className="bg-white border-b border-gray-200 shadow-sm z-50 relative">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <Link href="/">
-                <h1 className="text-2xl font-bold text-gray-800 cursor-pointer">Taulen</h1>
-              </Link>
-            </div>
-            <div className="flex items-center space-x-3">
-              <Link href="/login">
-                <Button variant="ghost" className="text-gray-700 hover:text-gray-900">
-                  Sign In
-                </Button>
-              </Link>
-              <Link href="/register">
-                <Button className="bg-amber-600 hover:bg-amber-700 text-white shadow-sm">
-                  Sign Up
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <TopMenu showNavigation={false} />
 
       {/* Main Content - Two Pane Layout */}
       <div className="flex-1 flex flex-col lg:flex-row">

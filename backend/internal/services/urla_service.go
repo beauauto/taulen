@@ -480,7 +480,7 @@ type VerifyAndCreateBorrowerRequest struct {
 	PhoneType      string  `json:"phoneType"` // HOME, MOBILE, WORK, OTHER
 	MaritalStatus  string  `json:"maritalStatus"`
 	Password       string  `json:"password" binding:"required,min=8"`
-	DateOfBirth    string  `json:"dateOfBirth" binding:"required"`
+	DateOfBirth    string  `json:"dateOfBirth"`
 	Address        string  `json:"address"`
 	City           string  `json:"city"`
 	State          string  `json:"state"`

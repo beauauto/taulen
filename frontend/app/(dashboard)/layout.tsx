@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { TopMenu } from '@/components/layout/TopMenu'
 
 export default function DashboardLayout({
   children,
@@ -28,12 +29,15 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="flex">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <TopMenu showNavigation={true} navItems={navItems} />
+      <div className="flex flex-1 min-h-0">
         <aside className="w-64 bg-white shadow-sm min-h-screen">
           <nav className="p-4">
             <div className="mb-6">
-              <h2 className="text-xl font-bold">Taulen</h2>
+              <Link href={user ? "/dashboard" : "/"}>
+                <h2 className="text-xl font-bold cursor-pointer hover:text-indigo-600 transition-colors">Taulen</h2>
+              </Link>
             </div>
             <ul className="space-y-1">
               {navItems.map((item) => {
