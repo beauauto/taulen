@@ -201,16 +201,43 @@ func (s *URLAService) GetApplication(dealID int64) (map[string]interface{}, erro
 			}
 			if borrower.MobilePhone.Valid && borrower.MobilePhone.String != "" {
 				borrowerData["phone"] = borrower.MobilePhone.String
+				borrowerData["phoneType"] = "MOBILE"
 			} else if borrower.HomePhone.Valid && borrower.HomePhone.String != "" {
 				borrowerData["phone"] = borrower.HomePhone.String
+				borrowerData["phoneType"] = "HOME"
 			} else if borrower.WorkPhone.Valid && borrower.WorkPhone.String != "" {
 				borrowerData["phone"] = borrower.WorkPhone.String
+				borrowerData["phoneType"] = "WORK"
 			}
 			if borrower.BirthDate.Valid {
 				borrowerData["dateOfBirth"] = borrower.BirthDate.Time.Format("2006-01-02")
 			}
 			if borrower.MaritalStatus.Valid {
 				borrowerData["maritalStatus"] = borrower.MaritalStatus.String
+			}
+			// Always include boolean fields, even if NULL (default to false)
+			// This ensures the frontend can distinguish between "not set" and "false"
+			if borrower.MilitaryServiceStatus.Valid {
+				borrowerData["militaryServiceStatus"] = borrower.MilitaryServiceStatus.Bool
+				borrowerData["isVeteran"] = borrower.MilitaryServiceStatus.Bool
+			} else {
+				// Field is NULL - explicitly set to false so frontend knows it's not set
+				borrowerData["militaryServiceStatus"] = false
+				borrowerData["isVeteran"] = false
+			}
+			if borrower.ConsentToCreditCheck.Valid {
+				borrowerData["consentToCreditCheck"] = borrower.ConsentToCreditCheck.Bool
+				borrowerData["acceptTerms"] = borrower.ConsentToCreditCheck.Bool
+			} else {
+				// Field is NULL - explicitly set to false so frontend knows it's not set
+				borrowerData["consentToCreditCheck"] = false
+				borrowerData["acceptTerms"] = false
+			}
+			if borrower.ConsentToContact.Valid {
+				borrowerData["consentToContact"] = borrower.ConsentToContact.Bool
+			} else {
+				// Field is NULL - explicitly set to false so frontend knows it's not set
+				borrowerData["consentToContact"] = false
 			}
 			
 			// Fetch current residence/address from residence table
@@ -939,7 +966,7 @@ func (s *URLAService) SaveBorrowerData(dealID int64, borrowerData map[string]int
 
 	// Update borrower information
 	var firstName, lastName *string
-	var middleName, suffix, ssn, maritalStatus, citizenshipStatus *string
+	var middleName, suffix, ssn, maritalStatus, citizenshipStatus, email *string
 	var dateOfBirth *time.Time
 	var dependentsCount *int64
 	var phone, phoneType *string
@@ -955,6 +982,9 @@ func (s *URLAService) SaveBorrowerData(dealID int64, borrowerData map[string]int
 	}
 	if val, ok := borrowerData["suffix"].(string); ok && val != "" {
 		suffix = &val
+	}
+	if val, ok := borrowerData["email"].(string); ok && val != "" {
+		email = &val
 	}
 	if val, ok := borrowerData["ssn"].(string); ok && val != "" {
 		ssn = &val
@@ -985,30 +1015,39 @@ func (s *URLAService) SaveBorrowerData(dealID int64, borrowerData map[string]int
 		}
 	}
 
-	// Update borrower using the repository
-	if firstName != nil || lastName != nil {
-		// Use UpdateBorrowerDetails for name updates
+	// Update email if provided
+	if email != nil {
+		err = s.borrowerRepo.UpdateEmail(borrowerID, *email)
+		if err != nil {
+			return errors.New("failed to update email: " + err.Error())
+		}
+	}
+
+	// Update borrower details (middleName, suffix, maritalStatus, phone) if any are provided
+	// Note: maritalStatus can be updated alone, so we check for it separately
+	if maritalStatus != nil || middleName != nil || suffix != nil || phone != nil {
 		err = s.borrowerRepo.UpdateBorrowerDetails(borrowerID, middleName, suffix, maritalStatus, phone, phoneType)
 		if err != nil {
 			return err
 		}
-		// Update first/last name separately if needed
-		if firstName != nil || lastName != nil {
-			// Get current borrower to preserve existing values
-			borrower, err := s.borrowerRepo.GetByID(borrowerID)
-			if err == nil {
-				first := borrower.FirstName
-				last := borrower.LastName
-				if firstName != nil {
-					first = *firstName
-				}
-				if lastName != nil {
-					last = *lastName
-				}
-				err = s.borrowerRepo.UpdateName(borrowerID, first, last)
-				if err != nil {
-					return err
-				}
+	}
+
+	// Update first/last name separately if needed
+	if firstName != nil || lastName != nil {
+		// Get current borrower to preserve existing values
+		borrower, err := s.borrowerRepo.GetByID(borrowerID)
+		if err == nil {
+			first := borrower.FirstName
+			last := borrower.LastName
+			if firstName != nil {
+				first = *firstName
+			}
+			if lastName != nil {
+				last = *lastName
+			}
+			err = s.borrowerRepo.UpdateName(borrowerID, first, last)
+			if err != nil {
+				return err
 			}
 		}
 	}

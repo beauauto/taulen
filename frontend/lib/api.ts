@@ -12,9 +12,26 @@ const apiClient = axios.create({
 // Request interceptor to add auth token
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token')
+    // Try multiple ways to get the token
+    let token = localStorage.getItem('token')
+    
+    // If not found, try authUtils
+    if (!token && typeof window !== 'undefined') {
+      try {
+        const { authUtils } = require('@/lib/auth')
+        token = authUtils.getToken()
+      } catch (e) {
+        // Ignore if authUtils not available
+      }
+    }
+    
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
+      console.log('API Request:', config.method?.toUpperCase(), config.url, 'with Authorization header (token length:', token.length, ')')
+    } else {
+      console.warn('API Request:', config.method?.toUpperCase(), config.url, 'without token')
+      console.warn('localStorage.getItem("token"):', localStorage.getItem('token'))
+      console.warn('localStorage keys:', Object.keys(localStorage))
     }
     return config
   },
@@ -33,14 +50,27 @@ apiClient.interceptors.response.use(
                             error.config?.url?.includes('/auth/register')
       
       if (!isAuthEndpoint && typeof window !== 'undefined') {
-        // Handle unauthorized for protected endpoints - clear token and redirect to login
-        localStorage.removeItem('token')
-        localStorage.removeItem('refreshToken')
-        localStorage.removeItem('user')
-        // Delete cookies
-        document.cookie = 'token=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;'
-        document.cookie = 'refreshToken=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;'
-        window.location.href = '/login'
+        // Check if we're on a page that can work without authentication
+        // These are pages in the application flow that should allow unauthenticated users
+        const currentPath = window.location.pathname
+        const isApplicationFlowPage = currentPath.includes('/buy/') || 
+                                      currentPath.includes('/refinance/') ||
+                                      currentPath.includes('/getting-started') ||
+                                      currentPath.includes('/applications/')
+        
+        // Only redirect to login if we're NOT on an application flow page
+        // Application flow pages should handle 401 errors gracefully
+        if (!isApplicationFlowPage) {
+          // Handle unauthorized for protected endpoints - clear token and redirect to login
+          localStorage.removeItem('token')
+          localStorage.removeItem('refreshToken')
+          localStorage.removeItem('user')
+          // Delete cookies
+          document.cookie = 'token=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;'
+          document.cookie = 'refreshToken=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;'
+          window.location.href = '/login'
+        }
+        // For application flow pages, just reject the promise - let the component handle it
       }
     }
     return Promise.reject(error)

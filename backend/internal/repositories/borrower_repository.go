@@ -142,7 +142,8 @@ func (r *BorrowerRepository) GetByID(id int64) (*Borrower, error) {
 	          first_name, middle_name, last_name, suffix, taxpayer_identifier_type, 
 	          taxpayer_identifier_value, birth_date, citizenship_residency_type, marital_status, 
 	          dependent_count, dependent_ages, home_phone, mobile_phone, work_phone, 
-	          work_phone_extension, created_at, updated_at
+	          work_phone_extension, military_service_status, consent_to_credit_check, consent_to_contact,
+	          created_at, updated_at
 	          FROM borrower WHERE id = $1`
 	row := r.db.QueryRow(query, id)
 
@@ -157,7 +158,8 @@ func (r *BorrowerRepository) GetByID(id int64) (*Borrower, error) {
 		&borrower.TaxpayerIDType, &borrower.TaxpayerIDValue, &borrower.BirthDate,
 		&borrower.CitizenshipType, &borrower.MaritalStatus, &borrower.DependentCount,
 		&borrower.DependentAges, &borrower.HomePhone, &borrower.MobilePhone,
-		&borrower.WorkPhone, &borrower.WorkPhoneExt, &borrower.CreatedAt, &borrower.UpdatedAt,
+		&borrower.WorkPhone, &borrower.WorkPhoneExt, &borrower.MilitaryServiceStatus,
+		&borrower.ConsentToCreditCheck, &borrower.ConsentToContact, &borrower.CreatedAt, &borrower.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -358,6 +360,16 @@ func (r *BorrowerRepository) UpdateBorrowerDetails(id int64, middleName, suffix,
 	          updated_at = CURRENT_TIMESTAMP
 	          WHERE id = $6`
 	_, err := r.db.Exec(query, middleName, suffix, maritalStatus, phone, phoneType, id)
+	return err
+}
+
+// UpdateEmail updates a borrower's email address
+func (r *BorrowerRepository) UpdateEmail(id int64, email string) error {
+	query := `UPDATE borrower SET 
+	          email_address = $1,
+	          updated_at = CURRENT_TIMESTAMP
+	          WHERE id = $2`
+	_, err := r.db.Exec(query, email, id)
 	return err
 }
 

@@ -15,7 +15,18 @@ export const authUtils = {
 
   setToken: (token: string): void => {
     if (typeof window === 'undefined') return
-    localStorage.setItem('token', token)
+    try {
+      localStorage.setItem('token', token)
+      // Verify it was stored
+      const stored = localStorage.getItem('token')
+      if (stored !== token) {
+        console.error('Token storage verification failed! Expected:', token.substring(0, 20), 'Got:', stored?.substring(0, 20))
+      } else {
+        console.log('Token stored successfully, length:', token.length)
+      }
+    } catch (error) {
+      console.error('Failed to store token in localStorage:', error)
+    }
   },
 
   removeToken: (): void => {

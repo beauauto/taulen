@@ -62,11 +62,22 @@ export function useAuth() {
       }
       
       console.log('Login successful, storing tokens and user data')
+      console.log('Access token length:', accessToken?.length)
+      console.log('Refresh token length:', refreshToken?.length)
+      console.log('User data:', userData)
       
       // Store in localStorage
       authUtils.setToken(accessToken)
       authUtils.setRefreshToken(refreshToken)
       authUtils.setUser(userData)
+      
+      // Verify tokens were stored
+      const storedToken = authUtils.getToken()
+      const storedRefreshToken = authUtils.getRefreshToken()
+      const storedUser = authUtils.getUser()
+      console.log('Token stored check:', storedToken ? `Success (length: ${storedToken.length})` : 'Failed')
+      console.log('Refresh token stored check:', storedRefreshToken ? `Success (length: ${storedRefreshToken.length})` : 'Failed')
+      console.log('User stored check:', storedUser ? 'Success' : 'Failed')
       
       // Also store in cookies for middleware (must be set before redirect)
       cookieUtils.setCookie('token', accessToken, 7)
@@ -78,6 +89,12 @@ export function useAuth() {
       
       setUser(userData)
       setIsAuthenticated(true)
+      
+      // Double-check token is still available after state updates
+      setTimeout(() => {
+        const tokenAfterDelay = authUtils.getToken()
+        console.log('Token check after delay:', tokenAfterDelay ? `Still available (length: ${tokenAfterDelay.length})` : 'MISSING!')
+      }, 100)
       
       // Small delay to ensure cookies are set before redirect
       await new Promise(resolve => setTimeout(resolve, 100))
@@ -96,19 +113,33 @@ export function useAuth() {
           console.log('Token available:', !!authUtils.getToken())
           
           // Ensure token is available in localStorage before making API call
-          const token = authUtils.getToken()
+          // Wait a bit longer to ensure token is fully stored
+          await new Promise(resolve => setTimeout(resolve, 300))
+          
+          // Try multiple ways to get the token
+          let token = authUtils.getToken()
+          if (!token) {
+            // Try direct localStorage access
+            token = localStorage.getItem('token')
+          }
+          if (!token) {
+            // Try cookie as fallback
+            token = cookieUtils.getCookie('token')
+          }
+          
           if (!token) {
             console.error('Token not available after login, cannot fetch applications')
+            console.error('localStorage.getItem("token"):', localStorage.getItem('token'))
+            console.error('localStorage keys:', Object.keys(localStorage))
             redirectPath = '/applications'
             throw new Error('Token not available')
           }
           
-          // Small delay to ensure token is available in localStorage
-          await new Promise(resolve => setTimeout(resolve, 200))
+          console.log('Token check before API call:', !!token, 'length:', token.length)
           
           // Verify token is still available
-          const tokenCheck = authUtils.getToken()
-          console.log('Token check before API call:', !!tokenCheck)
+          const tokenCheck = authUtils.getToken() || localStorage.getItem('token')
+          console.log('Token check after delay:', !!tokenCheck, 'length:', tokenCheck?.length)
           
           const appsResponse = await urlaApi.getMyApplications()
           console.log('Full applications response:', JSON.stringify(appsResponse, null, 2))

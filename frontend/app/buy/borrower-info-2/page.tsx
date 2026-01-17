@@ -10,6 +10,8 @@ import { Switch } from '@/components/ui/switch'
 import { Form1003Layout, FormSection } from '@/components/urla/Form1003Layout'
 import { AddressModal, AddressData } from '@/components/urla/AddressModal'
 import { MapPin } from 'lucide-react'
+import { authUtils } from '@/lib/auth'
+import { cookieUtils } from '@/lib/cookies'
 
 export default function BorrowerInfoPage2() {
   const router = useRouter()
@@ -23,6 +25,7 @@ export default function BorrowerInfoPage2() {
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const sections: FormSection[] = [
     {
@@ -64,38 +67,189 @@ export default function BorrowerInfoPage2() {
 
   useEffect(() => {
     // Check if borrower was already created (applicationId exists)
-    const applicationId = sessionStorage.getItem('applicationId')
+    // Try to get from URL params first (when redirected from /applications/[id])
+    const urlParams = new URLSearchParams(window.location.search)
+    const applicationIdFromUrl = urlParams.get('applicationId')
+    const applicationIdFromStorage = sessionStorage.getItem('applicationId')
+    const applicationId = applicationIdFromUrl || applicationIdFromStorage
+    
     if (!applicationId) {
       // If no applicationId, redirect back to first form
       router.push('/buy/borrower-info-1')
       return
     }
 
+    // Store in sessionStorage for consistency
+    if (applicationIdFromUrl && !applicationIdFromStorage) {
+      sessionStorage.setItem('applicationId', applicationId)
+    }
+
+    // Verify token exists - borrower should be authenticated by this point
+    // Try multiple methods to get the token
+    let token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+    if (!token && typeof window !== 'undefined') {
+      // Try authUtils
+      token = authUtils.getToken()
+    }
+    if (!token && typeof window !== 'undefined') {
+      // Try cookie
+      token = cookieUtils.getCookie('token')
+    }
+    
+    if (!token) {
+      console.warn('No authentication token found. Borrower should be authenticated by this point.')
+      console.warn('This may cause issues when saving data. Token should have been set during login.')
+      console.warn('localStorage.getItem("token"):', typeof window !== 'undefined' ? localStorage.getItem('token') : 'N/A')
+      console.warn('localStorage keys:', typeof window !== 'undefined' ? Object.keys(localStorage) : 'N/A')
+      // Don't return - still try to load data, it might work if the API doesn't require auth
+    } else {
+      console.log('Authentication token found, length:', token.length)
+      console.log('Token preview:', token.substring(0, 20) + '...')
+    }
+
     // Load existing application data
+    // The borrower should be authenticated by this point (created in borrower-info-1)
     const loadExistingData = async () => {
+      // Wait a bit to ensure token is available if it was just set
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      // Re-check token before making API call
+      let currentToken = localStorage.getItem('token')
+      if (!currentToken) {
+        currentToken = authUtils.getToken()
+      }
+      if (!currentToken) {
+        currentToken = cookieUtils.getCookie('token')
+      }
+      
+      if (!currentToken) {
+        console.error('Token not available for API call')
+        console.error('Cannot load application data without authentication')
+        return
+      }
+      
       try {
         const { urlaApi } = await import('@/lib/api')
+        console.log('Loading application data for ID:', applicationId)
+        console.log('Token available for API call:', !!currentToken, 'length:', currentToken.length)
         const appResponse = await urlaApi.getApplication(parseInt(applicationId, 10))
         const appData = appResponse.data
+        console.log('Application data loaded:', JSON.stringify(appData, null, 2))
         
         if (appData?.borrower) {
           const borrowerData = appData.borrower as any
-          setFormData(prev => ({
-            ...prev,
-            maritalStatus: borrowerData?.maritalStatus || prev.maritalStatus,
-            isVeteran: borrowerData?.isVeteran || borrowerData?.militaryServiceStatus || prev.isVeteran,
-            currentAddress: borrowerData?.currentAddress || prev.currentAddress,
-            acceptTerms: borrowerData?.consentToCreditCheck || prev.acceptTerms,
-            consentToContact: borrowerData?.consentToContact || prev.consentToContact,
-          }))
+          console.log('Borrower data:', JSON.stringify(borrowerData, null, 2))
+          console.log('Marital status:', borrowerData?.maritalStatus, 'type:', typeof borrowerData?.maritalStatus, 'value:', JSON.stringify(borrowerData?.maritalStatus))
+          console.log('Military status - isVeteran:', borrowerData?.isVeteran, 'militaryServiceStatus:', borrowerData?.militaryServiceStatus)
+          console.log('Consent to credit check - consentToCreditCheck:', borrowerData?.consentToCreditCheck, 'acceptTerms:', borrowerData?.acceptTerms)
+          console.log('Consent to contact:', borrowerData?.consentToContact)
+          
+          // Convert boolean values properly - handle both true/false and null/undefined
+          // The backend now always includes these fields (defaults to false if NULL)
+          // Handle both boolean true and string 'true' values, and check multiple field names
+          const rawIsVeteran = borrowerData?.isVeteran ?? borrowerData?.militaryServiceStatus
+          const rawAcceptTerms = borrowerData?.acceptTerms ?? borrowerData?.consentToCreditCheck
+          const rawConsentToContact = borrowerData?.consentToContact
+          
+          // Convert to boolean - handle true, 'true', 1, '1', 't', etc.
+          const isVeteran = rawIsVeteran === true || 
+                           rawIsVeteran === 'true' || 
+                           rawIsVeteran === 1 || 
+                           rawIsVeteran === '1' ||
+                           rawIsVeteran === 't' ||
+                           rawIsVeteran === 'T' ||
+                           false
+          
+          const acceptTerms = rawAcceptTerms === true || 
+                             rawAcceptTerms === 'true' || 
+                             rawAcceptTerms === 1 || 
+                             rawAcceptTerms === '1' ||
+                             rawAcceptTerms === 't' ||
+                             rawAcceptTerms === 'T' ||
+                             false
+          
+          const consentToContact = rawConsentToContact === true || 
+                                  rawConsentToContact === 'true' || 
+                                  rawConsentToContact === 1 || 
+                                  rawConsentToContact === '1' ||
+                                  rawConsentToContact === 't' ||
+                                  rawConsentToContact === 'T' ||
+                                  false
+          
+          console.log('Processed boolean values:', {
+            isVeteran,
+            acceptTerms,
+            consentToContact,
+            rawIsVeteran: borrowerData?.isVeteran,
+            rawMilitaryServiceStatus: borrowerData?.militaryServiceStatus,
+            rawConsentToCreditCheck: borrowerData?.consentToCreditCheck,
+            rawAcceptTerms: borrowerData?.acceptTerms,
+            rawConsentToContact: borrowerData?.consentToContact,
+            allBorrowerDataKeys: Object.keys(borrowerData || {}),
+          })
+          
+          // Ensure marital status is set correctly - trim whitespace and handle case
+          let maritalStatus = borrowerData?.maritalStatus || ''
+          if (maritalStatus) {
+            maritalStatus = maritalStatus.trim().toUpperCase()
+            // Map common variations to expected values
+            if (maritalStatus === 'MARRIED' || maritalStatus === 'M') {
+              maritalStatus = 'MARRIED'
+            } else if (maritalStatus === 'SEPARATED' || maritalStatus === 'S') {
+              maritalStatus = 'SEPARATED'
+            } else if (maritalStatus === 'UNMARRIED' || maritalStatus === 'U' || maritalStatus === 'SINGLE') {
+              maritalStatus = 'UNMARRIED'
+            }
+          }
+          
+          const updatedFormData = {
+            maritalStatus: maritalStatus,
+            isVeteran: isVeteran,
+            currentAddress: borrowerData?.currentResidence?.fullAddress || borrowerData?.currentAddress || '',
+            sameAsMailing: true, // Keep default
+            acceptTerms: acceptTerms,
+            consentToContact: consentToContact,
+          }
+          
+          console.log('Setting form data:', updatedFormData)
+          console.log('Marital status processing:', {
+            raw: borrowerData?.maritalStatus,
+            processed: maritalStatus,
+            formDataMaritalStatus: updatedFormData.maritalStatus,
+            matchesMARRIED: updatedFormData.maritalStatus === 'MARRIED',
+            matchesSEPARATED: updatedFormData.maritalStatus === 'SEPARATED',
+            matchesUNMARRIED: updatedFormData.maritalStatus === 'UNMARRIED',
+          })
+          
+          // Set form data
+          setFormData(updatedFormData)
+        } else {
+          console.warn('No borrower data found in application response')
+          console.warn('Application data structure:', appData)
         }
-      } catch (error) {
+      } catch (error: any) {
+        // Log error but don't block the form - user can still fill it out
         console.error('Failed to load existing application data:', error)
+        console.error('Error details:', {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+        })
+        // If 401, the API interceptor won't redirect (we're on an application flow page)
+        // The form will just start empty, which is fine
       }
     }
 
+    // Always try to load data if we have an applicationId
+    // The API call will fail gracefully if there's no token
     loadExistingData()
   }, [router])
+
+  // Debug: Log when formData.maritalStatus changes
+  useEffect(() => {
+    console.log('FormData maritalStatus changed:', formData.maritalStatus, 'type:', typeof formData.maritalStatus)
+  }, [formData.maritalStatus])
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -168,6 +322,10 @@ export default function BorrowerInfoPage2() {
       return
     }
 
+    if (isSubmitting) {
+      return // Prevent double submission
+    }
+
     // Get application ID from sessionStorage (set by first form)
     const applicationId = sessionStorage.getItem('applicationId')
     if (!applicationId) {
@@ -175,13 +333,25 @@ export default function BorrowerInfoPage2() {
       return
     }
 
+    setIsSubmitting(true)
+    setErrors({}) // Clear previous errors
+
     try {
+      // Check if token exists before making API call
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+      if (!token) {
+        setErrors({ submit: 'You must be logged in to save your information. Please refresh the page and try again.' })
+        setIsSubmitting(false)
+        return
+      }
+
       // Parse address
       const { streetAddress, city, state, zipCode } = parseAddress(formData.currentAddress)
 
       // Save borrower data (marital status, address, military status, and consents) to database
       const { urlaApi } = await import('@/lib/api')
-      await urlaApi.saveApplication(parseInt(applicationId), {
+      
+      const saveData = {
         borrower: {
           maritalStatus: formData.maritalStatus,
           currentAddress: formData.currentAddress,
@@ -195,19 +365,69 @@ export default function BorrowerInfoPage2() {
           acceptTerms: formData.acceptTerms,
           consentToContact: formData.consentToContact,
         },
-      })
+      }
+
+      console.log('Saving borrower data:', saveData)
+      console.log('Token exists:', !!token)
+      console.log('Application ID:', applicationId)
+      
+      // Save borrower data first - this must succeed before proceeding
+      const saveResponse = await urlaApi.saveApplication(parseInt(applicationId, 10), saveData)
+      console.log('Borrower data saved successfully:', saveResponse)
+
+      // Update progress - mark Section1a_PersonalInfo as complete
+      // This section includes personal info, marital status, address, military status, and consents
+      try {
+        const progressResponse = await urlaApi.updateProgressSection(
+          parseInt(applicationId, 10),
+          'Section1a_PersonalInfo',
+          true // Mark as complete
+        )
+        console.log('Progress updated successfully:', progressResponse)
+      } catch (progressError: any) {
+        console.error('Failed to update progress:', progressError)
+        // Log the error but don't block navigation - data is saved
+        console.error('Progress error details:', {
+          message: progressError.message,
+          response: progressError.response?.data,
+          status: progressError.response?.status,
+        })
+        // Continue anyway - data is saved, progress update is secondary
+      }
 
       // Clear session storage
       sessionStorage.removeItem('loanWantedData')
       sessionStorage.removeItem('borrowerInfo1Data')
 
-      // Navigate to the co-borrower question page
+      // Navigate to the co-borrower question page only after successful save
       router.push(`/applications/${applicationId}/co-borrower-question`)
     } catch (error: any) {
       console.error('Failed to save borrower information:', error)
-      setErrors({ 
-        submit: error.response?.data?.error || error.message || 'Failed to save information. Please try again.' 
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
       })
+      
+      let errorMessage = 'Failed to save information. Please try again.'
+      
+      if (error.response) {
+        // Server responded with error
+        errorMessage = error.response.data?.error || 
+                      error.response.data?.message || 
+                      `Server error: ${error.response.status} ${error.response.statusText || ''}`
+      } else if (error.request) {
+        // Request was made but no response received
+        errorMessage = 'Network error: Unable to connect to server. Please check if the backend server is running.'
+      } else {
+        // Something else happened
+        errorMessage = error.message || errorMessage
+      }
+      
+      setErrors({ submit: errorMessage })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -356,14 +576,15 @@ export default function BorrowerInfoPage2() {
           )}
         </div>
 
-        <div className="pt-4 flex justify-center">
-          <Button
-            type="submit"
-            className="w-full bg-amber-600 hover:bg-amber-700 text-white font-normal text-base py-4 px-8 h-[55px] rounded transition-colors shadow-sm max-w-md"
-          >
-            Continue
-          </Button>
-        </div>
+              <div className="pt-4 flex justify-center">
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full bg-amber-600 hover:bg-amber-700 text-white font-normal text-base py-4 px-8 h-[55px] rounded transition-colors shadow-sm max-w-md disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSubmitting ? 'Saving...' : 'Continue'}
+                </Button>
+              </div>
       </form>
       <AddressModal
         isOpen={isAddressModalOpen}

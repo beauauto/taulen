@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Form1003Layout, FormSection } from '@/components/urla/Form1003Layout'
 import { Card, CardContent } from '@/components/ui/card'
@@ -22,9 +22,17 @@ export function GettingStartedSummary({
   onContinue,
 }: GettingStartedSummaryProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const [transactionType, setTransactionType] = useState<string>('')
   const [borrowerName, setBorrowerName] = useState<string>('')
   const [borrowerEmail, setBorrowerEmail] = useState<string>('')
+  const [loanDetails, setLoanDetails] = useState<{
+    purchasePrice?: string
+    downPayment?: string
+    loanAmount?: string
+    propertyAddress?: string
+    outstandingBalance?: string
+  }>({})
   const [loading, setLoading] = useState(true)
 
   const sections: FormSection[] = [
@@ -65,6 +73,12 @@ export function GettingStartedSummary({
     },
   ]
 
+  const formatCurrency = (value: string) => {
+    const digits = value.replace(/\D/g, '')
+    if (!digits) return ''
+    return parseInt(digits, 10).toLocaleString('en-US')
+  }
+
   useEffect(() => {
     const loadSummaryData = async () => {
       try {
@@ -72,8 +86,37 @@ export function GettingStartedSummary({
         const currentPath = window.location.pathname
         if (currentPath.includes('/buy')) {
           setTransactionType('Purchase')
+          
+          // Load loan details from sessionStorage
+          const loanDataStr = sessionStorage.getItem('loanWantedData')
+          if (loanDataStr) {
+            try {
+              const loanData = JSON.parse(loanDataStr)
+              setLoanDetails({
+                purchasePrice: loanData.purchasePrice ? formatCurrency(loanData.purchasePrice) : undefined,
+                downPayment: loanData.downPayment ? formatCurrency(loanData.downPayment) : undefined,
+                loanAmount: loanData.loanAmount ? formatCurrency(loanData.loanAmount) : undefined,
+              })
+            } catch (e) {
+              // Ignore parse errors
+            }
+          }
         } else if (currentPath.includes('/refinance')) {
           setTransactionType('Refinance')
+          
+          // Load refinance details from sessionStorage
+          const refinanceDataStr = sessionStorage.getItem('refinanceData')
+          if (refinanceDataStr) {
+            try {
+              const refinanceData = JSON.parse(refinanceDataStr)
+              setLoanDetails({
+                propertyAddress: refinanceData.propertyAddress,
+                outstandingBalance: refinanceData.outstandingBalance ? formatCurrency(refinanceData.outstandingBalance) : undefined,
+              })
+            } catch (e) {
+              // Ignore parse errors
+            }
+          }
         }
 
         // First, try to load from sessionStorage (for new applications)
@@ -113,6 +156,15 @@ export function GettingStartedSummary({
                   setTransactionType(appData.loanPurpose)
                 }
 
+                // Set loan details from application
+                if (appData.loanAmount) {
+                  setLoanDetails(prev => ({
+                    ...prev,
+                    loanAmount: formatCurrency(appData.loanAmount.toString()),
+                  }))
+                }
+                // Add more loan detail fields as needed
+
                 // Set borrower info (override sessionStorage data)
                 if (appData.borrower) {
                   const borrower = appData.borrower as any
@@ -141,7 +193,7 @@ export function GettingStartedSummary({
     }
 
     loadSummaryData()
-  }, [applicationId])
+  }, [applicationId, pathname]) // Reload when pathname changes (e.g., returning from edit)
 
   const handleEditTransaction = () => {
     if (onEditTransaction) {
@@ -234,8 +286,43 @@ export function GettingStartedSummary({
                     <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-2">
                       Type of Transaction
                     </h3>
-                    <div className="text-base text-gray-700">
-                      {transactionType || 'Not specified'}
+                    <div className="space-y-1">
+                      <div className="text-base text-gray-700">
+                        {transactionType || 'Not specified'}
+                      </div>
+                      {transactionType === 'Purchase' && (
+                        <>
+                          {loanDetails.purchasePrice && (
+                            <div className="text-sm text-gray-600">
+                              Purchase Price: ${loanDetails.purchasePrice}
+                            </div>
+                          )}
+                          {loanDetails.downPayment && (
+                            <div className="text-sm text-gray-600">
+                              Down Payment: ${loanDetails.downPayment}
+                            </div>
+                          )}
+                          {loanDetails.loanAmount && (
+                            <div className="text-sm text-gray-600">
+                              Loan Amount: ${loanDetails.loanAmount}
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {transactionType === 'Refinance' && (
+                        <>
+                          {loanDetails.propertyAddress && (
+                            <div className="text-sm text-gray-600">
+                              Property: {loanDetails.propertyAddress}
+                            </div>
+                          )}
+                          {loanDetails.outstandingBalance && (
+                            <div className="text-sm text-gray-600">
+                              Outstanding Balance: ${loanDetails.outstandingBalance}
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

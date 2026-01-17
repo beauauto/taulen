@@ -20,9 +20,19 @@ function ApplicationForm() {
       }
 
       try {
+        // Verify token is available before making API call
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+        if (!token) {
+          console.error('No token available for API call in /applications/[id]')
+          console.error('localStorage keys:', typeof window !== 'undefined' ? Object.keys(localStorage) : 'N/A')
+          setIsLoading(false)
+          return
+        }
+        
         const { urlaApi } = await import('@/lib/api')
         
         // Load application data from database
+        console.log('Loading application data for redirect, ID:', applicationId, 'token available:', !!token)
         const appResponse = await urlaApi.getApplication(applicationId)
         const appData = appResponse.data
         
@@ -54,9 +64,11 @@ function ApplicationForm() {
             : `/refinance/borrower-info-1?applicationId=${applicationId}`
         } else if (!hasExtendedBorrowerInfo) {
           // Need to complete borrower-info-2
-          // Store applicationId in sessionStorage for the page to use
+          // Store applicationId in sessionStorage and pass as query param
           sessionStorage.setItem('applicationId', applicationId.toString())
-          nextStep = isPurchase ? '/buy/borrower-info-2' : '/refinance/borrower-info-2'
+          nextStep = isPurchase 
+            ? `/buy/borrower-info-2?applicationId=${applicationId}` 
+            : `/refinance/borrower-info-2?applicationId=${applicationId}`
         } else {
           // Check if co-borrower question has been answered
           // For now, assume we need to ask about co-borrower
