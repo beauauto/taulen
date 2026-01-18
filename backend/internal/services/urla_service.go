@@ -12,6 +12,18 @@ import (
 	"taulen/backend/internal/utils"
 )
 
+// normalizeMaritalStatus normalizes marital status to match database constraint
+// Database expects: "Married", "Separated", "Unmarried" (capitalized)
+// Frontend sends: "MARRIED", "SEPARATED", "UNMARRIED" (uppercase)
+func normalizeMaritalStatus(status string) string {
+	status = strings.ToLower(strings.TrimSpace(status))
+	if len(status) == 0 {
+		return status
+	}
+	// Capitalize first letter
+	return strings.ToUpper(status[:1]) + status[1:]
+}
+
 // URLAService handles URLA application business logic
 // In the new schema, a mortgage application is called a "deal"
 type URLAService struct {
@@ -131,6 +143,7 @@ func (s *URLAService) GetApplication(dealID int64) (map[string]interface{}, erro
 		ApplicationDate        sql.NullTime
 		CreatedAt              sql.NullTime
 		PrimaryBorrowerID      sql.NullInt64
+		CurrentFormStep        sql.NullString
 		LoanID                 sql.NullInt64
 		LoanPurposeType        sql.NullString
 		LoanAmountRequested    sql.NullFloat64
@@ -144,6 +157,7 @@ func (s *URLAService) GetApplication(dealID int64) (map[string]interface{}, erro
 	err = row.Scan(
 		&deal.ID, &deal.LoanNumber, &deal.UniversalLoanIdentifier, &deal.AgencyCaseIdentifier,
 		&deal.ApplicationType, &deal.TotalBorrowers, &deal.ApplicationDate, &deal.CreatedAt, &deal.PrimaryBorrowerID,
+		&deal.CurrentFormStep,
 		&deal.LoanID, &deal.LoanPurposeType, &deal.LoanAmountRequested, &deal.LoanTermMonths,
 		&deal.InterestRatePercentage, &deal.PropertyType, &deal.ManufacturedHomeWidth, &deal.TitleMannerType,
 	)
@@ -172,6 +186,9 @@ func (s *URLAService) GetApplication(dealID int64) (map[string]interface{}, erro
 	}
 	if deal.ApplicationType.Valid {
 		result["applicationType"] = deal.ApplicationType.String
+	}
+	if deal.CurrentFormStep.Valid {
+		result["currentFormStep"] = deal.CurrentFormStep.String
 	}
 
 	// Fetch borrower data if primary_borrower_id exists
@@ -283,11 +300,98 @@ func (s *URLAService) GetApplication(dealID int64) (map[string]interface{}, erro
 		} else {
 			log.Printf("GetApplication: Borrower not found or error for borrower ID %d", deal.PrimaryBorrowerID.Int64)
 		}
+		
+		// Fetch co-borrower data - always try to fetch if primary borrower exists
+		// This is more robust than checking TotalBorrowers which might be NULL
+		log.Printf("GetApplication: Attempting to fetch co-borrower data for deal %d (total borrowers: %v)", 
+			dealID, deal.TotalBorrowers)
+		coBorrowers, err := s.borrowerRepo.GetCoBorrowersByDealID(dealID, deal.PrimaryBorrowerID.Int64)
+		if err != nil {
+			log.Printf("GetApplication: Error fetching co-borrowers for deal %d: %v", dealID, err)
+		} else {
+			log.Printf("GetApplication: Found %d co-borrower(s) for deal %d", len(coBorrowers), dealID)
+			if len(coBorrowers) > 0 {
+				// For now, we only support one co-borrower, so take the first one
+				coBorrower := coBorrowers[0]
+				coBorrowerData := make(map[string]interface{})
+				coBorrowerData["firstName"] = coBorrower.FirstName
+				if coBorrower.MiddleName.Valid {
+					coBorrowerData["middleName"] = coBorrower.MiddleName.String
+				}
+				coBorrowerData["lastName"] = coBorrower.LastName
+				if coBorrower.Suffix.Valid {
+					coBorrowerData["suffix"] = coBorrower.Suffix.String
+				}
+				if coBorrower.EmailAddress.Valid {
+					coBorrowerData["email"] = coBorrower.EmailAddress.String
+				}
+				if coBorrower.MobilePhone.Valid && coBorrower.MobilePhone.String != "" {
+					coBorrowerData["phone"] = coBorrower.MobilePhone.String
+					coBorrowerData["phoneType"] = "MOBILE"
+				} else if coBorrower.HomePhone.Valid && coBorrower.HomePhone.String != "" {
+					coBorrowerData["phone"] = coBorrower.HomePhone.String
+					coBorrowerData["phoneType"] = "HOME"
+				} else if coBorrower.WorkPhone.Valid && coBorrower.WorkPhone.String != "" {
+					coBorrowerData["phone"] = coBorrower.WorkPhone.String
+					coBorrowerData["phoneType"] = "WORK"
+				}
+				if coBorrower.MaritalStatus.Valid {
+					coBorrowerData["maritalStatus"] = coBorrower.MaritalStatus.String
+				}
+				if coBorrower.MilitaryServiceStatus.Valid {
+					coBorrowerData["isVeteran"] = coBorrower.MilitaryServiceStatus.Bool
+				} else {
+					coBorrowerData["isVeteran"] = false
+				}
+				
+				// Fetch co-borrower address
+				addr, city, state, zipCode, err := s.borrowerRepo.GetCurrentResidence(coBorrower.ID)
+				if err == nil {
+					addressParts := []string{}
+					if strings.TrimSpace(addr) != "" {
+						addressParts = append(addressParts, strings.TrimSpace(addr))
+					}
+					if strings.TrimSpace(city) != "" || strings.TrimSpace(state) != "" || strings.TrimSpace(zipCode) != "" {
+						cityStateZip := []string{}
+						if strings.TrimSpace(city) != "" {
+							cityStateZip = append(cityStateZip, strings.TrimSpace(city))
+						}
+						if strings.TrimSpace(state) != "" {
+							cityStateZip = append(cityStateZip, strings.TrimSpace(state))
+						}
+						if strings.TrimSpace(zipCode) != "" {
+							cityStateZip = append(cityStateZip, strings.TrimSpace(zipCode))
+						}
+						if len(cityStateZip) > 0 {
+							addressParts = append(addressParts, strings.Join(cityStateZip, ", "))
+						}
+					}
+					if len(addressParts) > 0 {
+						coBorrowerData["currentAddress"] = strings.Join(addressParts, ", ")
+					}
+					// Check if co-borrower lives with primary borrower (no separate address)
+					if len(addressParts) == 0 {
+						coBorrowerData["liveTogether"] = true
+					} else {
+						coBorrowerData["liveTogether"] = false
+					}
+				} else {
+					// No address found, assume they live together
+					coBorrowerData["liveTogether"] = true
+				}
+				
+				result["coBorrower"] = coBorrowerData
+				log.Printf("GetApplication: Added co-borrower data to result for application %d", dealID)
+			} else {
+				log.Printf("GetApplication: No co-borrowers found for deal %d (checked borrower_progress table)", dealID)
+			}
+		}
 	} else {
 		log.Printf("GetApplication: No primary_borrower_id set for application %d", dealID)
 	}
 
-	log.Printf("GetApplication: Returning result for application %d, has borrower=%v", dealID, result["borrower"] != nil)
+	log.Printf("GetApplication: Returning result for application %d, has borrower=%v, has coBorrower=%v", 
+		dealID, result["borrower"] != nil, result["coBorrower"] != nil)
 	return result, nil
 }
 
@@ -812,6 +916,13 @@ func (s *URLAService) VerifyAndCreateBorrower(req VerifyAndCreateBorrowerRequest
 		return nil, errors.New("failed to create application")
 	}
 	
+	// Set initial form step to borrower-info-2 (next form after borrower-info-1)
+	err = s.UpdateCurrentFormStep(dealID, "borrower-info-2")
+	if err != nil {
+		log.Printf("VerifyAndCreateBorrower: Failed to set initial form step: %v", err)
+		// Don't fail the entire operation if step update fails
+	}
+	
 	// Create subject property record if property information is provided
 	if propertyValue > 0 {
 		_, err = s.dealRepo.CreateSubjectProperty(dealID, propertyAddress, propertyCity, propertyState, propertyZip, propertyValue)
@@ -919,8 +1030,14 @@ func (s *URLAService) UpdateDealProgressNotes(dealID int64, notes string) error 
 	return s.dealProgressRepo.UpdateNotes(dealID, notes)
 }
 
+// UpdateCurrentFormStep updates the current form step for a deal
+func (s *URLAService) UpdateCurrentFormStep(dealID int64, formStep string) error {
+	return s.dealRepo.UpdateCurrentFormStep(dealID, formStep)
+}
+
 // SaveBorrowerData saves borrower information from the form
-func (s *URLAService) SaveBorrowerData(dealID int64, borrowerData map[string]interface{}) error {
+// nextFormStep is the form step to navigate to after saving (e.g., "borrower-info-2", "co-borrower-question")
+func (s *URLAService) SaveBorrowerData(dealID int64, borrowerData map[string]interface{}, nextFormStep string) error {
 	// Get the deal to find the borrower ID
 	dealRow, err := s.dealRepo.GetDealByID(dealID)
 	if err != nil {
@@ -938,6 +1055,7 @@ func (s *URLAService) SaveBorrowerData(dealID int64, borrowerData map[string]int
 		ApplicationDate        sql.NullTime
 		CreatedAt              sql.NullTime
 		PrimaryBorrowerID      sql.NullInt64
+		CurrentFormStep        sql.NullString
 		LoanID                 sql.NullInt64
 		LoanPurposeType        sql.NullString
 		LoanAmountRequested    sql.NullFloat64
@@ -951,6 +1069,7 @@ func (s *URLAService) SaveBorrowerData(dealID int64, borrowerData map[string]int
 	err = dealRow.Scan(
 		&deal.ID, &deal.LoanNumber, &deal.UniversalLoanIdentifier, &deal.AgencyCaseIdentifier,
 		&deal.ApplicationType, &deal.TotalBorrowers, &deal.ApplicationDate, &deal.CreatedAt, &deal.PrimaryBorrowerID,
+		&deal.CurrentFormStep,
 		&deal.LoanID, &deal.LoanPurposeType, &deal.LoanAmountRequested, &deal.LoanTermMonths,
 		&deal.InterestRatePercentage, &deal.PropertyType, &deal.ManufacturedHomeWidth, &deal.TitleMannerType,
 	)
@@ -990,7 +1109,9 @@ func (s *URLAService) SaveBorrowerData(dealID int64, borrowerData map[string]int
 		ssn = &val
 	}
 	if val, ok := borrowerData["maritalStatus"].(string); ok && val != "" {
-		maritalStatus = &val
+		// Normalize marital status to match database constraint (capitalized: "Married", "Separated", "Unmarried")
+		normalized := normalizeMaritalStatus(val)
+		maritalStatus = &normalized
 	}
 	if val, ok := borrowerData["citizenshipStatus"].(string); ok && val != "" {
 		citizenshipStatus = &val
@@ -1138,5 +1259,218 @@ func (s *URLAService) SaveBorrowerData(dealID int64, borrowerData map[string]int
 		}
 	}
 
+	// Update current form step if provided
+	if nextFormStep != "" {
+		err = s.UpdateCurrentFormStep(dealID, nextFormStep)
+		if err != nil {
+			log.Printf("SaveBorrowerData: Failed to update current form step: %v", err)
+			// Don't fail the entire operation if step update fails
+		}
+	}
+
 	return nil
+}
+
+// SaveCoBorrowerData saves co-borrower information and links them to the deal
+// nextFormStep is the form step to navigate to after saving (e.g., "getting-to-know-you-intro")
+func (s *URLAService) SaveCoBorrowerData(dealID int64, coBorrowerData map[string]interface{}, nextFormStep string) error {
+	// Extract co-borrower information
+	var firstName, lastName, middleName, suffix, email, phone, phoneType, maritalStatus string
+	var isVeteran bool
+	var liveTogether bool = true
+	var address, city, state, zipCode string
+
+	if val, ok := coBorrowerData["firstName"].(string); ok && val != "" {
+		firstName = val
+	} else {
+		return errors.New("co-borrower first name is required")
+	}
+
+	if val, ok := coBorrowerData["lastName"].(string); ok && val != "" {
+		lastName = val
+	} else {
+		return errors.New("co-borrower last name is required")
+	}
+
+	if val, ok := coBorrowerData["middleName"].(string); ok {
+		middleName = val
+	}
+	if val, ok := coBorrowerData["suffix"].(string); ok {
+		suffix = val
+	}
+	if val, ok := coBorrowerData["email"].(string); ok {
+		email = val
+	}
+	if val, ok := coBorrowerData["phone"].(string); ok && val != "" {
+		phone = val
+	} else {
+		return errors.New("co-borrower phone is required")
+	}
+	if val, ok := coBorrowerData["phoneType"].(string); ok && val != "" {
+		phoneType = val
+	} else {
+		return errors.New("co-borrower phone type is required")
+	}
+	if val, ok := coBorrowerData["maritalStatus"].(string); ok && val != "" {
+		// Normalize marital status to match database constraint (capitalized: "Married", "Separated", "Unmarried")
+		maritalStatus = normalizeMaritalStatus(val)
+	} else {
+		return errors.New("co-borrower marital status is required")
+	}
+	if val, ok := coBorrowerData["isVeteran"].(bool); ok {
+		isVeteran = val
+	}
+	if val, ok := coBorrowerData["liveTogether"].(bool); ok {
+		liveTogether = val
+	}
+
+	// Get address if not living together
+	if !liveTogether {
+		if addr, ok := coBorrowerData["address"].(string); ok && addr != "" {
+			address = addr
+			if c, ok := coBorrowerData["city"].(string); ok {
+				city = c
+			}
+			if s, ok := coBorrowerData["state"].(string); ok {
+				state = s
+			}
+			if z, ok := coBorrowerData["zipCode"].(string); ok {
+				zipCode = z
+			}
+		} else {
+			return errors.New("co-borrower address is required when not living together")
+		}
+	}
+
+	// Create co-borrower record
+	coBorrowerID, err := s.borrowerRepo.CreateCoBorrower(firstName, lastName, middleName, suffix, email, phone, phoneType, maritalStatus, isVeteran)
+	if err != nil {
+		return errors.New("failed to create co-borrower: " + err.Error())
+	}
+
+	// Link co-borrower to deal via borrower_progress table
+	err = s.borrowerRepo.LinkBorrowerToDeal(coBorrowerID, dealID)
+	if err != nil {
+		return errors.New("failed to link co-borrower to deal: " + err.Error())
+	}
+
+	// Save address if not living together
+	if !liveTogether && address != "" && city != "" && state != "" && zipCode != "" {
+		err = s.borrowerRepo.UpdateOrCreateResidence(coBorrowerID, "BorrowerCurrentResidence", address, city, state, zipCode)
+		if err != nil {
+			return errors.New("failed to save co-borrower address: " + err.Error())
+		}
+	}
+
+	// Update deal to joint application
+	err = s.dealRepo.UpdateToJointApplication(dealID)
+	if err != nil {
+		return errors.New("failed to update deal to joint application: " + err.Error())
+	}
+
+	// Update current form step if provided
+	if nextFormStep != "" {
+		err = s.UpdateCurrentFormStep(dealID, nextFormStep)
+		if err != nil {
+			log.Printf("SaveCoBorrowerData: Failed to update current form step: %v", err)
+			// Don't fail the entire operation if step update fails
+		}
+	}
+
+	return nil
+}
+
+// SaveLoanData saves loan information for an application
+func (s *URLAService) SaveLoanData(dealID int64, loanData map[string]interface{}, nextFormStep string) error {
+	var loanAmount *float64
+	var purchasePrice, downPayment *float64
+	var propertyAddress *string
+	var outstandingBalance *float64
+	var isApplyingForOtherLoans, isDownPaymentPartGift *bool
+
+	// Extract loan amount (required for both purchase and refinance)
+	if val, ok := loanData["loanAmount"].(float64); ok && val > 0 {
+		loanAmount = &val
+	} else if valStr, ok := loanData["loanAmount"].(string); ok && valStr != "" {
+		// Handle string conversion
+		if parsed, err := parseFloatFromString(valStr); err == nil && parsed > 0 {
+			loanAmount = &parsed
+		}
+	}
+
+	// Extract purchase-specific fields
+	if val, ok := loanData["purchasePrice"].(float64); ok && val > 0 {
+		purchasePrice = &val
+	} else if valStr, ok := loanData["purchasePrice"].(string); ok && valStr != "" {
+		if parsed, err := parseFloatFromString(valStr); err == nil && parsed > 0 {
+			purchasePrice = &parsed
+		}
+	}
+
+	if val, ok := loanData["downPayment"].(float64); ok && val > 0 {
+		downPayment = &val
+	} else if valStr, ok := loanData["downPayment"].(string); ok && valStr != "" {
+		if parsed, err := parseFloatFromString(valStr); err == nil && parsed > 0 {
+			downPayment = &parsed
+		}
+	}
+
+	// Extract refinance-specific fields
+	if val, ok := loanData["propertyAddress"].(string); ok && val != "" {
+		propertyAddress = &val
+	}
+
+	if val, ok := loanData["outstandingBalance"].(float64); ok && val > 0 {
+		outstandingBalance = &val
+	} else if valStr, ok := loanData["outstandingBalance"].(string); ok && valStr != "" {
+		if parsed, err := parseFloatFromString(valStr); err == nil && parsed > 0 {
+			outstandingBalance = &parsed
+		}
+	}
+
+	// Extract boolean fields
+	if val, ok := loanData["isApplyingForOtherLoans"].(bool); ok {
+		isApplyingForOtherLoans = &val
+	}
+	if val, ok := loanData["isDownPaymentPartGift"].(bool); ok {
+		isDownPaymentPartGift = &val
+	}
+
+	// Update loan in database
+	// Note: loanPurpose is not updated here as it's set at application creation and cannot be changed
+	err := s.dealRepo.UpdateLoan(dealID, nil, nil, nil, nil, loanAmount, nil, nil)
+	if err != nil {
+		log.Printf("SaveLoanData: Failed to update loan: %v", err)
+		return fmt.Errorf("failed to update loan: %w", err)
+	}
+
+	// TODO: Store additional loan fields (purchasePrice, downPayment, propertyAddress, outstandingBalance, 
+	// isApplyingForOtherLoans, isDownPaymentPartGift) in a separate table or extend the loan table
+	// For now, we're saving the essential loanAmount which is the primary field
+
+	// Update current form step if provided
+	if nextFormStep != "" {
+		err = s.UpdateCurrentFormStep(dealID, nextFormStep)
+		if err != nil {
+			log.Printf("SaveLoanData: Failed to update current form step: %v", err)
+			// Don't fail the entire operation if step update fails
+		}
+	}
+
+	return nil
+}
+
+// parseFloatFromString parses a string that may contain currency formatting (commas, dollar signs)
+func parseFloatFromString(s string) (float64, error) {
+	// Remove currency formatting
+	s = strings.ReplaceAll(s, ",", "")
+	s = strings.ReplaceAll(s, "$", "")
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, errors.New("empty string")
+	}
+	// Parse as float64
+	var result float64
+	_, err := fmt.Sscanf(s, "%f", &result)
+	return result, err
 }

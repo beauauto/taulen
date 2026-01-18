@@ -40,7 +40,7 @@ export default function CoBorrowerInfoPage() {
     },
     {
       id: 'getting-to-know-you',
-      title: 'Getting to Know You',
+      title: 'Loan & Property',
       current: true,
     },
     {
@@ -189,7 +189,7 @@ export default function CoBorrowerInfoPage() {
       <Form1003Layout
         sections={sections}
         currentSectionId="getting-to-know-you"
-        title="Getting to Know You"
+        title="Loan & Property"
         onBack={handleBack}
       >
         <form onSubmit={handleSubmit} className="space-y-6">

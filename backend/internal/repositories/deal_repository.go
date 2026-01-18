@@ -83,6 +83,7 @@ func (r *DealRepository) CreateDeal(userID string, borrowerID *int64, loanPurpos
 func (r *DealRepository) GetDealByID(dealID int64) (*sql.Row, error) {
 	query := `SELECT d.id, d.loan_number, d.universal_loan_identifier, d.agency_case_identifier,
 		d.application_type, d.total_borrowers, d.application_date, d.created_at, d.primary_borrower_id,
+		d.current_form_step,
 		l.id as loan_id, l.loan_purpose_type, l.loan_amount_requested, l.loan_term_months,
 		l.interest_rate_percentage, l.property_type, l.manufactured_home_width_type, l.title_manner_type
 		FROM deal d
@@ -119,6 +120,20 @@ func (r *DealRepository) UpdateDeal(dealID int64, loanNumber, universalLoanIdent
 	
 	_, err := r.db.Exec(query, dealID, loanNumber, universalLoanIdentifier, agencyCaseIdentifier, applicationType, totalBorrowers)
 	return err
+}
+
+// UpdateCurrentFormStep updates the current form step for a deal
+func (r *DealRepository) UpdateCurrentFormStep(dealID int64, formStep string) error {
+	query := `UPDATE deal SET current_form_step = $2 WHERE id = $1`
+	_, err := r.db.Exec(query, dealID, formStep)
+	return err
+}
+
+// UpdateToJointApplication updates a deal to joint application type
+func (r *DealRepository) UpdateToJointApplication(dealID int64) error {
+	applicationType := "JointCredit"
+	totalBorrowers := 2
+	return r.UpdateDeal(dealID, nil, nil, nil, &applicationType, &totalBorrowers)
 }
 
 // UpdateLoan updates loan information for a deal

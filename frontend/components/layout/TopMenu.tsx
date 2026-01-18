@@ -39,7 +39,12 @@ export function TopMenu({
             <Button
               variant="ghost"
               size="sm"
-              onClick={onBack}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onBack(e as any)
+              }}
               className="md:hidden text-red-600 hover:text-red-700 hover:bg-red-50 p-2 h-auto"
             >
               <ArrowLeft className="w-4 h-4" />

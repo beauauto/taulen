@@ -118,11 +118,44 @@ func (h *URLAHandler) SaveApplication(c *gin.Context) {
 		return
 	}
 
+	// Extract nextFormStep if provided
+	var nextFormStep string
+	if val, ok := req["nextFormStep"].(string); ok {
+		nextFormStep = val
+	}
+
 	// Save borrower information if provided
 	if borrowerData, ok := req["borrower"].(map[string]interface{}); ok {
-		err = h.urlaService.SaveBorrowerData(id, borrowerData)
+		err = h.urlaService.SaveBorrowerData(id, borrowerData, nextFormStep)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save borrower data: " + err.Error()})
+			return
+		}
+	}
+
+	// Save co-borrower information if provided
+	if coBorrowerData, ok := req["coBorrower"].(map[string]interface{}); ok {
+		err = h.urlaService.SaveCoBorrowerData(id, coBorrowerData, nextFormStep)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save co-borrower data: " + err.Error()})
+			return
+		}
+	}
+
+	// Save loan information if provided
+	if loanData, ok := req["loan"].(map[string]interface{}); ok {
+		err = h.urlaService.SaveLoanData(id, loanData, nextFormStep)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save loan data: " + err.Error()})
+			return
+		}
+	}
+
+	// If only nextFormStep is provided (no borrower, coBorrower, or loan data), update the form step directly
+	if nextFormStep != "" && req["borrower"] == nil && req["coBorrower"] == nil && req["loan"] == nil {
+		err = h.urlaService.UpdateCurrentFormStep(id, nextFormStep)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update form step: " + err.Error()})
 			return
 		}
 	}

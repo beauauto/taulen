@@ -41,39 +41,64 @@ function ApplicationForm() {
           return
         }
 
-        const borrowerData = appData.borrower as any
+        // Store loan purpose in sessionStorage for unified forms
         const loanPurpose = appData.loanPurpose || ''
-        const isPurchase = loanPurpose.toLowerCase() === 'purchase'
-        const isRefinance = loanPurpose.toLowerCase() === 'refinance'
+        if (loanPurpose) {
+          sessionStorage.setItem('loanPurpose', loanPurpose)
+        }
 
-        // Determine which step in the original chain to redirect to
+        // Use currentFormStep from the database if available
         let nextStep = ''
+        const currentFormStep = appData.currentFormStep as string | undefined
 
-        // Check if borrower basic info exists (from borrower-info-1)
-        const hasBasicBorrowerInfo = borrowerData?.firstName && borrowerData?.lastName && borrowerData?.email
-
-        // Check if borrower extended info exists (from borrower-info-2)
-        const hasExtendedBorrowerInfo = borrowerData?.maritalStatus && borrowerData?.currentAddress
-
-        if (!hasBasicBorrowerInfo) {
-          // Need to complete borrower-info-1
-          // Store applicationId in sessionStorage and pass as query param
+        if (currentFormStep) {
+          // Use the stored form step to determine where to redirect
           sessionStorage.setItem('applicationId', applicationId.toString())
-          nextStep = isPurchase 
-            ? `/buy/borrower-info-1?applicationId=${applicationId}` 
-            : `/refinance/borrower-info-1?applicationId=${applicationId}`
-        } else if (!hasExtendedBorrowerInfo) {
-          // Need to complete borrower-info-2
-          // Store applicationId in sessionStorage and pass as query param
-          sessionStorage.setItem('applicationId', applicationId.toString())
-          nextStep = isPurchase 
-            ? `/buy/borrower-info-2?applicationId=${applicationId}` 
-            : `/refinance/borrower-info-2?applicationId=${applicationId}`
+          sessionStorage.setItem('cameFromApplications', 'true')
+          
+          // Map form step to unified URL path (no need to check purchase vs refinance)
+          if (currentFormStep.startsWith('borrower-info-1')) {
+            nextStep = `/application/borrower-info-1?applicationId=${applicationId}`
+          } else if (currentFormStep.startsWith('borrower-info-2')) {
+            nextStep = `/application/borrower-info-2?applicationId=${applicationId}`
+          } else if (currentFormStep.startsWith('co-borrower-question')) {
+            nextStep = `/application/co-borrower-question?applicationId=${applicationId}`
+          } else if (currentFormStep.startsWith('co-borrower-info-1')) {
+            nextStep = `/application/co-borrower-info-1?applicationId=${applicationId}`
+          } else if (currentFormStep.startsWith('co-borrower-info-2')) {
+            nextStep = `/application/co-borrower-info-2?applicationId=${applicationId}`
+          } else if (currentFormStep.startsWith('co-borrower-info')) {
+            // Fallback for old form step name
+            nextStep = `/application/co-borrower-info-1?applicationId=${applicationId}`
+          } else if (currentFormStep.startsWith('review')) {
+            nextStep = `/application/review?applicationId=${applicationId}`
+          } else if (currentFormStep.startsWith('getting-to-know-you-intro')) {
+            nextStep = `/application/getting-to-know-you-intro?applicationId=${applicationId}`
+          } else if (currentFormStep.startsWith('loan')) {
+            nextStep = `/application/loan?applicationId=${applicationId}`
+          } else {
+            // Fallback: use the form step as-is (assuming it's a full path)
+            nextStep = `/application/${currentFormStep}?applicationId=${applicationId}`
+          }
         } else {
-          // Check if co-borrower question has been answered
-          // For now, assume we need to ask about co-borrower
-          // You can add more logic here to check if co-borrower info exists
-          nextStep = `/applications/${applicationId}/co-borrower-question`
+          // Fallback: if no currentFormStep, use the old logic
+          const borrowerData = appData.borrower as any
+          const hasBasicBorrowerInfo = borrowerData?.firstName && borrowerData?.lastName && borrowerData?.email
+          const hasExtendedBorrowerInfo = borrowerData?.maritalStatus && borrowerData?.currentAddress
+          const hasCoBorrower = !!appData.coBorrower
+
+          sessionStorage.setItem('applicationId', applicationId.toString())
+          if (!hasBasicBorrowerInfo) {
+            nextStep = `/application/borrower-info-1?applicationId=${applicationId}`
+          } else if (!hasExtendedBorrowerInfo) {
+            nextStep = `/application/borrower-info-2?applicationId=${applicationId}`
+          } else if (!hasCoBorrower) {
+            sessionStorage.setItem('cameFromApplications', 'true')
+            nextStep = `/application/co-borrower-question?applicationId=${applicationId}`
+          } else {
+            sessionStorage.setItem('cameFromApplications', 'true')
+            nextStep = `/application/getting-to-know-you-intro?applicationId=${applicationId}`
+          }
         }
 
         if (nextStep) {

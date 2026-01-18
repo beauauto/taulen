@@ -18,7 +18,7 @@ export default function CoBorrowerQuestionPage() {
     },
     {
       id: 'getting-to-know-you',
-      title: 'Getting to Know You',
+      title: 'Loan & Property',
       completed: true,
     },
     {
@@ -70,7 +70,7 @@ export default function CoBorrowerQuestionPage() {
     <Form1003Layout
       sections={sections}
       currentSectionId="getting-to-know-you"
-      title="Getting to Know You"
+      title="Loan & Property"
       onBack={handleBack}
     >
       <div className="space-y-6">

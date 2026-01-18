@@ -1,11 +1,73 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Form1003Layout, FormSection } from '@/components/urla/Form1003Layout'
+import { urlaApi } from '@/lib/api'
 
 export default function GettingStartedPage() {
   const router = useRouter()
+
+  // Check if an application already exists and redirect if it does
+  useEffect(() => {
+    const checkExistingApplication = async () => {
+      const applicationId = sessionStorage.getItem('applicationId')
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+      
+      // If we have an applicationId and token, redirect to the appropriate form
+      if (applicationId && token) {
+        try {
+          const appResponse = await urlaApi.getApplication(parseInt(applicationId, 10))
+          const appData = appResponse.data
+          
+          // Load loanPurpose from database and store it
+          if (appData?.loanPurpose) {
+            sessionStorage.setItem('loanPurpose', appData.loanPurpose)
+          }
+          
+          // Redirect to the current form step or borrower-info-1 if no step set
+          const currentFormStep = appData?.currentFormStep as string | undefined
+          if (currentFormStep) {
+            if (currentFormStep.startsWith('borrower-info-1')) {
+              router.replace(`/application/borrower-info-1?applicationId=${applicationId}`)
+            } else if (currentFormStep.startsWith('borrower-info-2')) {
+              router.replace(`/application/borrower-info-2?applicationId=${applicationId}`)
+            } else if (currentFormStep.startsWith('co-borrower-question')) {
+              router.replace(`/application/co-borrower-question?applicationId=${applicationId}`)
+            } else if (currentFormStep.startsWith('co-borrower-info-1')) {
+              router.replace(`/application/co-borrower-info-1?applicationId=${applicationId}`)
+            } else if (currentFormStep.startsWith('co-borrower-info-2')) {
+              router.replace(`/application/co-borrower-info-2?applicationId=${applicationId}`)
+            } else if (currentFormStep.startsWith('co-borrower-info')) {
+              // Fallback for old form step name
+              router.replace(`/application/co-borrower-info-1?applicationId=${applicationId}`)
+            } else if (currentFormStep.startsWith('review')) {
+              router.replace(`/application/review?applicationId=${applicationId}`)
+            } else if (currentFormStep.startsWith('getting-to-know-you-intro')) {
+              router.replace(`/application/getting-to-know-you-intro?applicationId=${applicationId}`)
+            } else if (currentFormStep.startsWith('loan')) {
+              router.replace(`/application/loan?applicationId=${applicationId}`)
+            } else {
+              router.replace(`/application/borrower-info-1?applicationId=${applicationId}`)
+            }
+          } else {
+            router.replace(`/application/borrower-info-1?applicationId=${applicationId}`)
+          }
+        } catch (error: any) {
+          // If 401 or application not found, allow user to proceed (new application)
+          if (error.response?.status === 401 || error.response?.status === 404) {
+            // Clear invalid applicationId
+            sessionStorage.removeItem('applicationId')
+            return
+          }
+          console.error('Error checking existing application:', error)
+        }
+      }
+    }
+    
+    checkExistingApplication()
+  }, [router])
 
   const sections: FormSection[] = [
     {
@@ -15,7 +77,7 @@ export default function GettingStartedPage() {
     },
     {
       id: 'getting-to-know-you',
-      title: 'Getting to Know You',
+      title: 'Loan & Property',
       locked: true,
     },
     {
@@ -46,11 +108,15 @@ export default function GettingStartedPage() {
   ]
 
   const handlePurchase = () => {
-    router.push('/buy')
+    // Store the choice in sessionStorage for later use
+    sessionStorage.setItem('loanPurpose', 'Purchase')
+    router.push('/application/borrower-info-1')
   }
 
   const handleRefinance = () => {
-    router.push('/refinance')
+    // Store the choice in sessionStorage for later use
+    sessionStorage.setItem('loanPurpose', 'Refinance')
+    router.push('/application/borrower-info-1')
   }
 
   const handleBack = () => {

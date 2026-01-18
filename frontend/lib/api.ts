@@ -53,8 +53,7 @@ apiClient.interceptors.response.use(
         // Check if we're on a page that can work without authentication
         // These are pages in the application flow that should allow unauthenticated users
         const currentPath = window.location.pathname
-        const isApplicationFlowPage = currentPath.includes('/buy/') || 
-                                      currentPath.includes('/refinance/') ||
+        const isApplicationFlowPage = currentPath.includes('/application/') ||
                                       currentPath.includes('/getting-started') ||
                                       currentPath.includes('/applications/')
         

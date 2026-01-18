@@ -46,7 +46,7 @@ export function BorrowerEditForm({
     },
     {
       id: 'getting-to-know-you',
-      title: 'Getting to Know You',
+      title: 'Loan & Property',
       locked: true,
     },
     {

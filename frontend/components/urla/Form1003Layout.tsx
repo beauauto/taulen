@@ -182,7 +182,12 @@ export function Form1003Layout({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={onBack}
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        onBack(e as any)
+                      }}
                       className="text-red-600 hover:text-red-700 hover:bg-red-50"
                     >
                       <ArrowLeft className="w-4 h-4 mr-2" />

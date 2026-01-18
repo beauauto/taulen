@@ -10,22 +10,25 @@ import { Edit2, Home, User } from 'lucide-react'
 
 interface GettingStartedSummaryProps {
   applicationId?: number
-  onEditTransaction?: () => void
   onEditBorrower?: () => void
   onContinue?: () => void
+  onBack?: () => void
 }
 
 export function GettingStartedSummary({
   applicationId,
-  onEditTransaction,
   onEditBorrower,
   onContinue,
+  onBack,
 }: GettingStartedSummaryProps) {
   const router = useRouter()
   const pathname = usePathname()
   const [transactionType, setTransactionType] = useState<string>('')
   const [borrowerName, setBorrowerName] = useState<string>('')
   const [borrowerEmail, setBorrowerEmail] = useState<string>('')
+  const [coBorrowerName, setCoBorrowerName] = useState<string>('')
+  const [coBorrowerEmail, setCoBorrowerEmail] = useState<string>('')
+  const [hasCoBorrower, setHasCoBorrower] = useState<boolean>(false)
   const [loanDetails, setLoanDetails] = useState<{
     purchasePrice?: string
     downPayment?: string
@@ -43,7 +46,7 @@ export function GettingStartedSummary({
     },
     {
       id: 'getting-to-know-you',
-      title: 'Getting to Know You',
+      title: 'Loan & Property',
       locked: true,
     },
     {
@@ -82,26 +85,9 @@ export function GettingStartedSummary({
   useEffect(() => {
     const loadSummaryData = async () => {
       try {
-        // Determine transaction type from current path
-        const currentPath = window.location.pathname
-        if (currentPath.includes('/buy')) {
-          setTransactionType('Purchase')
-          
-          // Load loan details from sessionStorage
-          const loanDataStr = sessionStorage.getItem('loanWantedData')
-          if (loanDataStr) {
-            try {
-              const loanData = JSON.parse(loanDataStr)
-              setLoanDetails({
-                purchasePrice: loanData.purchasePrice ? formatCurrency(loanData.purchasePrice) : undefined,
-                downPayment: loanData.downPayment ? formatCurrency(loanData.downPayment) : undefined,
-                loanAmount: loanData.loanAmount ? formatCurrency(loanData.loanAmount) : undefined,
-              })
-            } catch (e) {
-              // Ignore parse errors
-            }
-          }
-        } else if (currentPath.includes('/refinance')) {
+        // Determine transaction type from loanPurpose in sessionStorage
+        const loanPurpose = sessionStorage.getItem('loanPurpose') || 'Purchase'
+        if (loanPurpose === 'Refinance' || loanPurpose === 'refinance') {
           setTransactionType('Refinance')
           
           // Load refinance details from sessionStorage
@@ -112,6 +98,38 @@ export function GettingStartedSummary({
               setLoanDetails({
                 propertyAddress: refinanceData.propertyAddress,
                 outstandingBalance: refinanceData.outstandingBalance ? formatCurrency(refinanceData.outstandingBalance) : undefined,
+              })
+            } catch (e) {
+              // Ignore parse errors
+            }
+          }
+          // Also check loanWantedData (unified storage)
+          const loanDataStr = sessionStorage.getItem('loanWantedData')
+          if (loanDataStr && !refinanceDataStr) {
+            try {
+              const loanData = JSON.parse(loanDataStr)
+              if (loanData.propertyAddress || loanData.outstandingBalance) {
+                setLoanDetails({
+                  propertyAddress: loanData.propertyAddress,
+                  outstandingBalance: loanData.outstandingBalance ? formatCurrency(loanData.outstandingBalance) : undefined,
+                })
+              }
+            } catch (e) {
+              // Ignore parse errors
+            }
+          }
+        } else {
+          setTransactionType('Purchase')
+          
+          // Load purchase loan details from sessionStorage
+          const loanDataStr = sessionStorage.getItem('loanWantedData')
+          if (loanDataStr) {
+            try {
+              const loanData = JSON.parse(loanDataStr)
+              setLoanDetails({
+                purchasePrice: loanData.purchasePrice ? formatCurrency(loanData.purchasePrice) : undefined,
+                downPayment: loanData.downPayment ? formatCurrency(loanData.downPayment) : undefined,
+                loanAmount: loanData.loanAmount ? formatCurrency(loanData.loanAmount) : undefined,
               })
             } catch (e) {
               // Ignore parse errors
@@ -175,6 +193,25 @@ export function GettingStartedSummary({
                     setBorrowerEmail(borrower.email)
                   }
                 }
+
+                // Set co-borrower info if available
+                if (appData.coBorrower) {
+                  const coBorrower = appData.coBorrower as any
+                  setHasCoBorrower(true)
+                  const nameParts: string[] = []
+                  if (coBorrower.firstName) nameParts.push(coBorrower.firstName)
+                  if (coBorrower.middleName) nameParts.push(coBorrower.middleName)
+                  if (coBorrower.lastName) nameParts.push(coBorrower.lastName)
+                  if (coBorrower.suffix) nameParts.push(coBorrower.suffix)
+                  if (nameParts.length > 0) {
+                    setCoBorrowerName(nameParts.join(' '))
+                  }
+                  if (coBorrower.email) {
+                    setCoBorrowerEmail(coBorrower.email)
+                  }
+                } else {
+                  setHasCoBorrower(false)
+                }
               }
             }
           } catch (error: any) {
@@ -195,51 +232,78 @@ export function GettingStartedSummary({
     loadSummaryData()
   }, [applicationId, pathname]) // Reload when pathname changes (e.g., returning from edit)
 
-  const handleEditTransaction = () => {
-    if (onEditTransaction) {
-      onEditTransaction()
-    } else {
-      // Default: go back to getting-started
-      router.push('/getting-started')
-    }
-  }
-
   const handleEditBorrower = () => {
     if (onEditBorrower) {
       onEditBorrower()
     } else {
-      // Default: go to borrower-info-1
-      const currentPath = window.location.pathname
-      if (currentPath.includes('/buy')) {
-        router.push('/buy/borrower-info-1')
-      } else if (currentPath.includes('/refinance')) {
-        router.push('/refinance/borrower-info-1')
-      }
+      // Default: go to borrower-info-1 (unified route)
+      const appId = applicationId || sessionStorage.getItem('applicationId')
+      const url = appId ? `/application/borrower-info-1?applicationId=${appId}` : '/application/borrower-info-1'
+      router.push(url)
     }
   }
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (onContinue) {
       onContinue()
     } else {
-      // Default: proceed to borrower-info-1
+      // Default: proceed to Loan & Property Intro (getting-to-know-you-intro)
       const currentPath = window.location.pathname
-      if (currentPath.includes('/buy')) {
-        router.push('/buy/borrower-info-1')
-      } else if (currentPath.includes('/refinance')) {
-        router.push('/refinance/borrower-info-1')
+      const appId = applicationId || sessionStorage.getItem('applicationId')
+      
+      // Update form step to getting-to-know-you-intro
+      if (appId) {
+        try {
+          const { urlaApi } = await import('@/lib/api')
+          await urlaApi.saveApplication(
+            typeof appId === 'number' ? appId : parseInt(appId, 10),
+            {
+              nextFormStep: 'getting-to-know-you-intro',
+            }
+          )
+        } catch (error) {
+          console.error('Failed to update form step:', error)
+          // Continue anyway - navigation will still work
+        }
       }
+      
+      // Use unified route
+      const url = appId ? `/application/getting-to-know-you-intro?applicationId=${appId}` : '/application/getting-to-know-you-intro'
+      router.push(url)
     }
   }
 
-  const handleBack = () => {
-    const currentPath = window.location.pathname
-    if (currentPath.includes('/buy')) {
-      router.push('/buy')
-    } else if (currentPath.includes('/refinance')) {
-      router.push('/refinance')
+  const handleBack = async () => {
+    // Use provided onBack handler if available, otherwise use default logic
+    if (onBack) {
+      onBack()
+      return
+    }
+    
+    // Default: Go back to the last completed form in the 1003 flow
+    // Check if co-borrower exists to determine which form to go back to
+    const appId = applicationId || sessionStorage.getItem('applicationId')
+    
+    if (appId) {
+      try {
+        const appResponse = await urlaApi.getApplication(parseInt(appId.toString(), 10))
+        const appData = appResponse.data
+        
+        // If co-borrower exists, go back to co-borrower-info-2
+        // Otherwise, go back to borrower-info-2
+        if (appData?.coBorrower) {
+          router.push(`/application/co-borrower-info-2?applicationId=${appId}`)
+        } else {
+          router.push(`/application/borrower-info-2?applicationId=${appId}`)
+        }
+      } catch (error) {
+        // If we can't load application data, default to borrower-info-2
+        console.error('Failed to load application data for back navigation:', error)
+        router.push(`/application/borrower-info-2?applicationId=${appId}`)
+      }
     } else {
-      router.push('/getting-started')
+      // No application ID, go back to borrower-info-2 as default
+      router.push('/application/borrower-info-2')
     }
   }
 
@@ -277,64 +341,53 @@ export function GettingStartedSummary({
           {/* Type of Transaction */}
           <Card className="bg-white border border-gray-200 shadow-sm">
             <CardContent className="p-4 md:p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex items-start space-x-4 flex-1">
-                  <div className="flex-shrink-0 w-12 h-12 bg-gray-100 rounded flex items-center justify-center border border-gray-200">
-                    <Home className="w-6 h-6 text-gray-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-2">
-                      Type of Transaction
-                    </h3>
-                    <div className="space-y-1">
-                      <div className="text-base text-gray-700">
-                        {transactionType || 'Not specified'}
-                      </div>
-                      {transactionType === 'Purchase' && (
-                        <>
-                          {loanDetails.purchasePrice && (
-                            <div className="text-sm text-gray-600">
-                              Purchase Price: ${loanDetails.purchasePrice}
-                            </div>
-                          )}
-                          {loanDetails.downPayment && (
-                            <div className="text-sm text-gray-600">
-                              Down Payment: ${loanDetails.downPayment}
-                            </div>
-                          )}
-                          {loanDetails.loanAmount && (
-                            <div className="text-sm text-gray-600">
-                              Loan Amount: ${loanDetails.loanAmount}
-                            </div>
-                          )}
-                        </>
-                      )}
-                      {transactionType === 'Refinance' && (
-                        <>
-                          {loanDetails.propertyAddress && (
-                            <div className="text-sm text-gray-600">
-                              Property: {loanDetails.propertyAddress}
-                            </div>
-                          )}
-                          {loanDetails.outstandingBalance && (
-                            <div className="text-sm text-gray-600">
-                              Outstanding Balance: ${loanDetails.outstandingBalance}
-                            </div>
-                          )}
-                        </>
-                      )}
+              <div className="flex items-start space-x-4">
+                <div className="flex-shrink-0 w-12 h-12 bg-gray-100 rounded flex items-center justify-center border border-gray-200">
+                  <Home className="w-6 h-6 text-gray-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-2">
+                    Type of Transaction
+                  </h3>
+                  <div className="space-y-1">
+                    <div className="text-base text-gray-700">
+                      {transactionType || 'Not specified'}
                     </div>
+                    {transactionType === 'Purchase' && (
+                      <>
+                        {loanDetails.purchasePrice && (
+                          <div className="text-sm text-gray-600">
+                            Purchase Price: ${loanDetails.purchasePrice}
+                          </div>
+                        )}
+                        {loanDetails.downPayment && (
+                          <div className="text-sm text-gray-600">
+                            Down Payment: ${loanDetails.downPayment}
+                          </div>
+                        )}
+                        {loanDetails.loanAmount && (
+                          <div className="text-sm text-gray-600">
+                            Loan Amount: ${loanDetails.loanAmount}
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {transactionType === 'Refinance' && (
+                      <>
+                        {loanDetails.propertyAddress && (
+                          <div className="text-sm text-gray-600">
+                            Property: {loanDetails.propertyAddress}
+                          </div>
+                        )}
+                        {loanDetails.outstandingBalance && (
+                          <div className="text-sm text-gray-600">
+                            Outstanding Balance: ${loanDetails.outstandingBalance}
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleEditTransaction}
-                  className="ml-4 text-amber-600 border-amber-600 hover:bg-amber-50"
-                >
-                  <Edit2 className="w-4 h-4 mr-1" />
-                  Edit
-                </Button>
               </div>
             </CardContent>
           </Card>
@@ -372,6 +425,40 @@ export function GettingStartedSummary({
                   <Edit2 className="w-4 h-4 mr-1" />
                   Edit
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Co-Borrower */}
+          <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="p-4 md:p-6">
+              <div className="flex items-start justify-between">
+                <div className="flex items-start space-x-4 flex-1">
+                  <div className="flex-shrink-0 w-12 h-12 bg-gray-100 rounded flex items-center justify-center border border-gray-200">
+                    <User className="w-6 h-6 text-gray-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-2">
+                      Co-Borrower
+                    </h3>
+                    <div className="space-y-1">
+                      {hasCoBorrower ? (
+                        <>
+                          {coBorrowerName ? (
+                            <div className="text-base text-gray-700">{coBorrowerName}</div>
+                          ) : (
+                            <div className="text-base text-gray-500 italic">Not provided</div>
+                          )}
+                          {coBorrowerEmail && (
+                            <div className="text-sm text-gray-600">{coBorrowerEmail}</div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="text-base text-gray-500 italic">None</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>

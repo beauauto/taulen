@@ -468,3 +468,114 @@ func (r *BorrowerRepository) UpdateOrCreateResidence(borrowerID int64, residency
 
 // Note: deal_id has been removed from borrower table
 // Borrowers are linked to deals through the deal.borrower_id relationship or a junction table if needed
+
+// CreateCoBorrower creates a co-borrower record (without email/password since they don't have an account)
+func (r *BorrowerRepository) CreateCoBorrower(firstName, lastName, middleName, suffix, email, phone, phoneType, maritalStatus string, isVeteran bool) (int64, error) {
+	var borrowerID int64
+	
+	// Set phone based on phoneType
+	var homePhone, mobilePhone, workPhone sql.NullString
+	switch phoneType {
+	case "HOME":
+		homePhone = sql.NullString{String: phone, Valid: true}
+	case "MOBILE":
+		mobilePhone = sql.NullString{String: phone, Valid: true}
+	case "WORK":
+		workPhone = sql.NullString{String: phone, Valid: true}
+	default:
+		mobilePhone = sql.NullString{String: phone, Valid: true} // Default to mobile
+	}
+	
+	// Set marital status (normalize to match database constraint)
+	var maritalStatusNull sql.NullString
+	if maritalStatus != "" {
+		// Normalize to capitalized format: "Married", "Separated", "Unmarried"
+		status := strings.ToLower(strings.TrimSpace(maritalStatus))
+		if len(status) > 0 {
+			normalized := strings.ToUpper(status[:1]) + status[1:]
+			maritalStatusNull = sql.NullString{String: normalized, Valid: true}
+		}
+	}
+	
+	// Set middle name and suffix
+	var middleNameNull, suffixNull sql.NullString
+	if middleName != "" {
+		middleNameNull = sql.NullString{String: middleName, Valid: true}
+	}
+	if suffix != "" {
+		suffixNull = sql.NullString{String: suffix, Valid: true}
+	}
+	
+	// Set email (nullable since co-borrower may not have account)
+	var emailNull sql.NullString
+	if email != "" {
+		emailNull = sql.NullString{String: email, Valid: true}
+	}
+	
+	// Set military service status
+	militaryServiceStatus := sql.NullBool{Bool: isVeteran, Valid: true}
+	
+	query := `INSERT INTO borrower (first_name, last_name, middle_name, suffix, email_address, 
+	          home_phone, mobile_phone, work_phone, marital_status, military_service_status, 
+	          created_at, updated_at) 
+	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) 
+	          RETURNING id`
+	
+	err := r.db.QueryRow(query, firstName, lastName, middleNameNull, suffixNull, emailNull,
+		homePhone, mobilePhone, workPhone, maritalStatusNull, militaryServiceStatus).Scan(&borrowerID)
+	if err != nil {
+		return 0, err
+	}
+	
+	return borrowerID, nil
+}
+
+// LinkBorrowerToDeal links a borrower to a deal via borrower_progress table
+func (r *BorrowerRepository) LinkBorrowerToDeal(borrowerID, dealID int64) error {
+	query := `INSERT INTO borrower_progress (borrower_id, deal_id, created_at, updated_at) 
+	          VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+	          ON CONFLICT (borrower_id, deal_id) DO NOTHING`
+	_, err := r.db.Exec(query, borrowerID, dealID)
+	return err
+}
+
+// GetCoBorrowersByDealID retrieves all co-borrowers (non-primary) for a deal
+func (r *BorrowerRepository) GetCoBorrowersByDealID(dealID, primaryBorrowerID int64) ([]*Borrower, error) {
+	query := `SELECT b.id, b.first_name, b.middle_name, b.last_name, b.suffix, 
+	                 b.email_address, b.mobile_phone, b.home_phone, b.work_phone,
+	                 b.marital_status, b.military_service_status
+	          FROM borrower b
+	          INNER JOIN borrower_progress bp ON b.id = bp.borrower_id
+	          WHERE bp.deal_id = $1 AND b.id != $2
+	          ORDER BY bp.created_at ASC`
+	
+	rows, err := r.db.Query(query, dealID, primaryBorrowerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var borrowers []*Borrower
+	for rows.Next() {
+		borrower := &Borrower{}
+		err := rows.Scan(
+			&borrower.ID,
+			&borrower.FirstName,
+			&borrower.MiddleName,
+			&borrower.LastName,
+			&borrower.Suffix,
+			&borrower.EmailAddress,
+			&borrower.MobilePhone,
+			&borrower.HomePhone,
+			&borrower.WorkPhone,
+			&borrower.MaritalStatus,
+			&borrower.MilitaryServiceStatus,
+		)
+		if err != nil {
+			return nil, err
+		}
+		borrowers = append(borrowers, borrower)
+	}
+
+	return borrowers, rows.Err()
+}
