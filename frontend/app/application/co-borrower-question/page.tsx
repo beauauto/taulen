@@ -79,7 +79,7 @@ export default function CoBorrowerQuestionPage() {
       try {
         const { urlaApi } = await import('@/lib/api')
         // Update form step without saving any data
-        await urlaApi.saveApplication(parseInt(appId, 10), {
+        await urlaApi.saveApplication(appId, {
           nextFormStep: 'review',
         })
       } catch (error) {

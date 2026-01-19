@@ -106,16 +106,16 @@ export const urlaApi = {
   createApplication: (data: { loanType: string; loanPurpose: string; loanAmount: number }) =>
     apiClient.post('/urla/applications', data),
   getMyApplications: () => apiClient.get('/urla/applications'),
-  getApplication: (id: number) => apiClient.get(`/urla/applications/${id}`),
-  updateApplicationStatus: (id: number, status: string) =>
+  getApplication: (id: string) => apiClient.get(`/urla/applications/${id}`),
+  updateApplicationStatus: (id: string, status: string) =>
     apiClient.put(`/urla/applications/${id}/status`, { status }),
-  saveApplication: (id: number, data: any) =>
+  saveApplication: (id: string, data: any) =>
     apiClient.post(`/urla/applications/${id}/save`, data),
-  getApplicationProgress: (id: number) =>
+  getApplicationProgress: (id: string) =>
     apiClient.get(`/urla/applications/${id}/progress`),
-  updateProgressSection: (id: number, section: string, complete: boolean) =>
+  updateProgressSection: (id: string, section: string, complete: boolean) =>
     apiClient.patch(`/urla/applications/${id}/progress/section`, { section, complete }),
-  updateProgressNotes: (id: number, notes: string) =>
+  updateProgressNotes: (id: string, notes: string) =>
     apiClient.patch(`/urla/applications/${id}/progress/notes`, { notes }),
   sendVerificationCode: (data: {
     email: string
@@ -150,7 +150,7 @@ export const urlaApi = {
     estimatedPrice?: number
   }) => apiClient.post<{
     application: {
-      id: number
+      id: string
       loanType: string
       loanPurpose: string
       loanAmount: number

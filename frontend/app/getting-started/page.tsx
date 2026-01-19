@@ -18,7 +18,7 @@ export default function GettingStartedPage() {
       // If we have an applicationId and token, redirect to the appropriate form
       if (applicationId && token) {
         try {
-          const appResponse = await urlaApi.getApplication(parseInt(applicationId, 10))
+          const appResponse = await urlaApi.getApplication(applicationId)
           const appData = appResponse.data
           
           // Load loanPurpose from database and store it

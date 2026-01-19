@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +12,7 @@ import { AddressModal, AddressData } from '@/components/urla/AddressModal'
 import { MapPin } from 'lucide-react'
 import { authUtils } from '@/lib/auth'
 import { cookieUtils } from '@/lib/cookies'
+import { useFormChanges } from '@/hooks/useFormChanges'
 
 export default function BorrowerInfoPage2() {
   const router = useRouter()
@@ -26,6 +27,12 @@ export default function BorrowerInfoPage2() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // Track form changes to avoid unnecessary saves
+  const { hasChanges, resetInitialData } = useFormChanges(formData)
+  
+  // Ref for first input field to auto-focus
+  const maritalStatusSelectRef = useRef<HTMLSelectElement>(null)
 
   const sections: FormSection[] = [
     {
@@ -132,7 +139,7 @@ export default function BorrowerInfoPage2() {
         const { urlaApi } = await import('@/lib/api')
         console.log('Loading application data for ID:', applicationId)
         console.log('Token available for API call:', !!currentToken, 'length:', currentToken.length)
-        const appResponse = await urlaApi.getApplication(parseInt(applicationId, 10))
+        const appResponse = await urlaApi.getApplication(applicationId)
         const appData = appResponse.data
         console.log('Application data loaded:', JSON.stringify(appData, null, 2))
         
@@ -210,6 +217,8 @@ export default function BorrowerInfoPage2() {
             acceptTerms: acceptTerms,
             consentToContact: consentToContact,
           }
+          // Reset initial data after loading
+          resetInitialData(updatedFormData)
           
           console.log('Setting form data:', updatedFormData)
           console.log('Marital status processing:', {
@@ -250,6 +259,17 @@ export default function BorrowerInfoPage2() {
   useEffect(() => {
     console.log('FormData maritalStatus changed:', formData.maritalStatus, 'type:', typeof formData.maritalStatus)
   }, [formData.maritalStatus])
+  
+  // Auto-focus first field when form is ready
+  useEffect(() => {
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(() => {
+      if (maritalStatusSelectRef.current) {
+        maritalStatusSelectRef.current.focus()
+      }
+    }, 100)
+    return () => clearTimeout(timer)
+  }, []) // Run once on mount
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -345,42 +365,48 @@ export default function BorrowerInfoPage2() {
         return
       }
 
-      // Parse address
-      const { streetAddress, city, state, zipCode } = parseAddress(formData.currentAddress)
+      // Only save if form data has changed
+      if (hasChanges) {
+        // Parse address
+        const { streetAddress, city, state, zipCode } = parseAddress(formData.currentAddress)
 
-      // Save borrower data (marital status, address, military status, and consents) to database
-      const { urlaApi } = await import('@/lib/api')
-      
-      const saveData = {
-        borrower: {
-          maritalStatus: formData.maritalStatus,
-          currentAddress: formData.currentAddress,
-          // Include address components for backend parsing
-          address: streetAddress,
-          city: city,
-          state: state,
-          zipCode: zipCode,
-          // Military service status and consents
-          isVeteran: formData.isVeteran,
-          acceptTerms: formData.acceptTerms,
-          consentToContact: formData.consentToContact,
-        },
-        nextFormStep: 'review', // Set next form step to Getting Started Summary
+        // Save borrower data (marital status, address, military status, and consents) to database
+        const { urlaApi } = await import('@/lib/api')
+        
+        const saveData = {
+          borrower: {
+            maritalStatus: formData.maritalStatus,
+            currentAddress: formData.currentAddress,
+            // Include address components for backend parsing
+            address: streetAddress,
+            city: city,
+            state: state,
+            zipCode: zipCode,
+            // Military service status and consents
+            isVeteran: formData.isVeteran,
+            acceptTerms: formData.acceptTerms,
+            consentToContact: formData.consentToContact,
+          },
+          nextFormStep: 'co-borrower-question', // Set next form step to co-borrower question
+        }
+
+        console.log('Saving borrower data:', saveData)
+        console.log('Token exists:', !!token)
+        console.log('Application ID:', applicationId)
+        
+        // Save borrower data first - this must succeed before proceeding
+        const saveResponse = await urlaApi.saveApplication(applicationId, saveData)
+        console.log('Borrower data saved successfully:', saveResponse)
+        
+        // Reset initial data after successful save
+        resetInitialData(formData)
       }
-
-      console.log('Saving borrower data:', saveData)
-      console.log('Token exists:', !!token)
-      console.log('Application ID:', applicationId)
-      
-      // Save borrower data first - this must succeed before proceeding
-      const saveResponse = await urlaApi.saveApplication(parseInt(applicationId, 10), saveData)
-      console.log('Borrower data saved successfully:', saveResponse)
 
       // Update progress - mark Section1a_PersonalInfo as complete
       // This section includes personal info, marital status, address, military status, and consents
       try {
         const progressResponse = await urlaApi.updateProgressSection(
-          parseInt(applicationId, 10),
+          applicationId,
           'Section1a_PersonalInfo',
           true // Mark as complete
         )
@@ -400,8 +426,8 @@ export default function BorrowerInfoPage2() {
       sessionStorage.removeItem('loanWantedData')
       sessionStorage.removeItem('borrowerInfo1Data')
 
-      // Navigate to Getting Started Summary after successful save
-      router.push(`/application/review?applicationId=${applicationId}`)
+      // Navigate to co-borrower question after successful save
+      router.push(`/application/co-borrower-question?applicationId=${applicationId}`)
     } catch (error: any) {
       console.error('Failed to save borrower information:', error)
       console.error('Error details:', {
@@ -474,6 +500,7 @@ export default function BorrowerInfoPage2() {
               Marital Status <span className="text-red-500">*</span>
             </Label>
             <Select
+              ref={maritalStatusSelectRef}
               value={formData.maritalStatus}
               onValueChange={(value) => handleInputChange('maritalStatus', value)}
               required

@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Form1003Layout, FormSection } from '@/components/urla/Form1003Layout'
 import { BorrowerBasicInfoForm, BorrowerBasicInfoFormData } from '@/components/urla/BorrowerBasicInfoForm'
+import { parsePhoneNumber } from '@/components/ui/PhoneInput'
 import { urlaApi } from '@/lib/api'
 
 interface BorrowerEditFormProps {
@@ -205,7 +206,7 @@ export function BorrowerEditForm({
               lastName: formData.lastName,
               suffix: formData.suffix,
               email: formData.email,
-              phone: formData.phone.replace(/\D/g, ''),
+              phone: parsePhoneNumber(formData.phone),
               phoneType: formData.phoneType,
               maritalStatus: formData.maritalStatus,
             },

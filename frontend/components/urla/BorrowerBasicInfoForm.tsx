@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { AddressModal, AddressData } from '@/components/urla/AddressModal'
+import { PhoneInput } from '@/components/ui/PhoneInput'
 import { MapPin } from 'lucide-react'
 
 export interface BorrowerBasicInfoFormData {
@@ -38,6 +39,7 @@ export interface BorrowerBasicInfoFormProps {
   phoneRequired?: boolean
   addressRequired?: boolean
   useLegalLabel?: boolean
+  firstNameInputRef?: React.RefObject<HTMLInputElement>
 }
 
 export function BorrowerBasicInfoForm({
@@ -55,6 +57,7 @@ export function BorrowerBasicInfoForm({
   phoneRequired = true,
   addressRequired = true,
   useLegalLabel = true,
+  firstNameInputRef,
 }: BorrowerBasicInfoFormProps) {
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false)
 
@@ -76,6 +79,7 @@ export function BorrowerBasicInfoForm({
             First Name <span className="text-red-500">*</span>
           </Label>
           <Input
+            ref={firstNameInputRef}
             id="firstName"
             name="firstName"
             type="text"
@@ -190,59 +194,21 @@ export function BorrowerBasicInfoForm({
           </div>
         )}
 
-        <div className={showPhoneType ? "grid grid-cols-1 md:grid-cols-3 gap-4" : ""}>
-          <div className={showPhoneType ? "md:col-span-2" : ""}>
-            <Label htmlFor="phone" className="text-sm font-medium text-gray-700">
-              Phone number {phoneRequired && <span className="text-red-500">*</span>}
-              {!phoneRequired && <span className="text-gray-400">(Optional)</span>}
-            </Label>
-            <Input
-              id="phone"
-              name="phone"
-              type="tel"
-              required={phoneRequired}
-              value={formData.phone}
-              onChange={(e) => {
-                // Format phone number as user types (for sign up form style)
-                if (!showPhoneType) {
-                  const value = e.target.value.replace(/\D/g, '').slice(0, 10)
-                  const formatted = value.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')
-                  onInputChange('phone', formatted || value)
-                } else {
-                  onInputChange('phone', e.target.value)
-                }
-              }}
-              className={`mt-1 ${errors.phone ? 'border-red-500' : ''}`}
-              maxLength={showPhoneType ? undefined : 14}
-              autoComplete="tel"
-            />
-            {errors.phone && (
-              <p className="mt-1 text-sm text-red-500">{errors.phone}</p>
-            )}
-          </div>
-          {showPhoneType && (
-            <div>
-              <Label htmlFor="phoneType" className="text-sm font-medium text-gray-700">
-                Phone type <span className="text-red-500">*</span>
-              </Label>
-              <Select
-                value={formData.phoneType}
-                onValueChange={(value) => onInputChange('phoneType', value)}
-                required
-                className={`mt-1 ${errors.phoneType ? 'border-red-500' : ''}`}
-              >
-                <option value=""> </option>
-                <option value="HOME">Home</option>
-                <option value="MOBILE">Mobile</option>
-                <option value="WORK">Work</option>
-                <option value="OTHER">Other</option>
-              </Select>
-              {errors.phoneType && (
-                <p className="mt-1 text-sm text-red-500">{errors.phoneType}</p>
-              )}
-            </div>
-          )}
-        </div>
+        <PhoneInput
+          id="phone"
+          name="phone"
+          value={formData.phone}
+          onChange={(value) => onInputChange('phone', value)}
+          onPhoneTypeChange={showPhoneType ? (value) => onInputChange('phoneType', value) : undefined}
+          phoneType={formData.phoneType}
+          label="Phone number"
+          required={phoneRequired}
+          error={errors.phone}
+          showPhoneType={showPhoneType}
+        />
+        {showPhoneType && errors.phoneType && (
+          <p className="mt-1 text-sm text-red-500">{errors.phoneType}</p>
+        )}
 
         {showMaritalStatus && (
           <div>

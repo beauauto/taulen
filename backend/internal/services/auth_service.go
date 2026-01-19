@@ -132,18 +132,17 @@ func (s *AuthService) Register(req RegisterRequest) (*AuthResponse, error) {
 	}
 
 	// Generate tokens - use Borrower ID as string for ID
-	borrowerIDStr := utils.Int64ToString(borrower.ID)
 	email := ""
 	if borrower.EmailAddress.Valid {
 		email = borrower.EmailAddress.String
 	}
 
-	accessToken, err := s.jwtManager.GenerateAccessToken(borrowerIDStr, email)
+	accessToken, err := s.jwtManager.GenerateAccessToken(borrower.ID, email)
 	if err != nil {
 		return nil, errors.New("failed to generate access token")
 	}
 
-	refreshToken, err := s.jwtManager.GenerateRefreshToken(borrowerIDStr, email)
+	refreshToken, err := s.jwtManager.GenerateRefreshToken(borrower.ID, email)
 	if err != nil {
 		return nil, errors.New("failed to generate refresh token")
 	}
@@ -152,7 +151,7 @@ func (s *AuthService) Register(req RegisterRequest) (*AuthResponse, error) {
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		User: UserResponse{
-			ID:        borrowerIDStr,
+			ID:        borrower.ID,
 			Email:     email,
 			FirstName: borrower.FirstName,
 			LastName:  borrower.LastName,
@@ -225,18 +224,17 @@ func (s *AuthService) VerifyAndRegister(req VerifyAndRegisterRequest) (*AuthResp
 	}
 
 	// Generate tokens
-	borrowerIDStr := utils.Int64ToString(borrower.ID)
 	email := ""
 	if borrower.EmailAddress.Valid {
 		email = borrower.EmailAddress.String
 	}
 
-	accessToken, err := s.jwtManager.GenerateAccessToken(borrowerIDStr, email)
+	accessToken, err := s.jwtManager.GenerateAccessToken(borrower.ID, email)
 	if err != nil {
 		return nil, errors.New("failed to generate access token")
 	}
 
-	refreshToken, err := s.jwtManager.GenerateRefreshToken(borrowerIDStr, email)
+	refreshToken, err := s.jwtManager.GenerateRefreshToken(borrower.ID, email)
 	if err != nil {
 		return nil, errors.New("failed to generate refresh token")
 	}
@@ -245,7 +243,7 @@ func (s *AuthService) VerifyAndRegister(req VerifyAndRegisterRequest) (*AuthResp
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		User: UserResponse{
-			ID:        borrowerIDStr,
+			ID:        borrower.ID,
 			Email:     email,
 			FirstName: borrower.FirstName,
 			LastName:  borrower.LastName,
@@ -335,18 +333,17 @@ func (s *AuthService) Login(req LoginRequest) (*AuthResponse, error) {
 		}
 
 		// Generate tokens
-		borrowerIDStr := utils.Int64ToString(borrower.ID)
 		email := ""
 		if borrower.EmailAddress.Valid {
 			email = borrower.EmailAddress.String
 		}
 
-		accessToken, err := s.jwtManager.GenerateAccessToken(borrowerIDStr, email)
+		accessToken, err := s.jwtManager.GenerateAccessToken(borrower.ID, email)
 		if err != nil {
 			return nil, errors.New("failed to generate access token")
 		}
 
-		refreshToken, err := s.jwtManager.GenerateRefreshToken(borrowerIDStr, email)
+		refreshToken, err := s.jwtManager.GenerateRefreshToken(borrower.ID, email)
 		if err != nil {
 			return nil, errors.New("failed to generate refresh token")
 		}
@@ -355,7 +352,7 @@ func (s *AuthService) Login(req LoginRequest) (*AuthResponse, error) {
 			AccessToken:  accessToken,
 			RefreshToken: refreshToken,
 			User: UserResponse{
-				ID:        borrowerIDStr,
+				ID:        borrower.ID,
 				Email:     email,
 				FirstName: borrower.FirstName,
 				LastName:  borrower.LastName,
@@ -467,30 +464,24 @@ func (s *AuthService) RefreshToken(req RefreshRequest) (*AuthResponse, error) {
 		}, nil
 	}
 
-	// Try borrower
-	borrowerID, err := utils.StringToInt64(claims.UserID)
-	if err != nil {
-		return nil, errors.New("invalid token")
-	}
-
-	borrower, err := s.borrowerRepo.GetByID(borrowerID)
+	// Try borrower (UserID is now a UUID string)
+	borrower, err := s.borrowerRepo.GetByID(claims.UserID)
 	if err != nil {
 		return nil, errors.New("borrower not found")
 	}
 
 	// Generate new tokens
-	borrowerIDStr := utils.Int64ToString(borrower.ID)
 	email := ""
 	if borrower.EmailAddress.Valid {
 		email = borrower.EmailAddress.String
 	}
 
-	accessToken, err := s.jwtManager.GenerateAccessToken(borrowerIDStr, email)
+	accessToken, err := s.jwtManager.GenerateAccessToken(borrower.ID, email)
 	if err != nil {
 		return nil, errors.New("failed to generate access token")
 	}
 
-	refreshToken, err := s.jwtManager.GenerateRefreshToken(borrowerIDStr, email)
+	refreshToken, err := s.jwtManager.GenerateRefreshToken(borrower.ID, email)
 	if err != nil {
 		return nil, errors.New("failed to generate refresh token")
 	}
@@ -499,7 +490,7 @@ func (s *AuthService) RefreshToken(req RefreshRequest) (*AuthResponse, error) {
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		User: UserResponse{
-			ID:        borrowerIDStr,
+			ID:        borrower.ID,
 			Email:     email,
 			FirstName: borrower.FirstName,
 			LastName:  borrower.LastName,

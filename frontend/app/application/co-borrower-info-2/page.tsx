@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,6 +11,7 @@ import { Form1003Layout, FormSection } from '@/components/urla/Form1003Layout'
 import { AddressModal, AddressData } from '@/components/urla/AddressModal'
 import { MapPin } from 'lucide-react'
 import { urlaApi } from '@/lib/api'
+import { useFormChanges } from '@/hooks/useFormChanges'
 
 export default function CoBorrowerInfoPage2() {
   const router = useRouter()
@@ -26,6 +27,12 @@ export default function CoBorrowerInfoPage2() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // Track form changes to avoid unnecessary saves
+  const { hasChanges, resetInitialData } = useFormChanges(formData)
+  
+  // Ref for first input field to auto-focus
+  const maritalStatusSelectRef = useRef<HTMLSelectElement>(null)
 
   const sections: FormSection[] = [
     {
@@ -90,7 +97,7 @@ export default function CoBorrowerInfoPage2() {
       }
 
       try {
-        const appResponse = await urlaApi.getApplication(parseInt(applicationId, 10))
+        const appResponse = await urlaApi.getApplication(applicationId)
         const appData = appResponse.data
         
         if (appData?.coBorrower) {
@@ -124,14 +131,17 @@ export default function CoBorrowerInfoPage2() {
                coBorrowerData.liveTogether === '1')
             : true
           
-          setFormData({
+          const loadedData = {
             maritalStatus: maritalStatus,
             isVeteran: isVeteran,
             liveTogether: liveTogether,
             currentAddress: coBorrowerData?.currentAddress || coBorrowerData?.currentResidence?.fullAddress || '',
             acceptTerms: false, // Consents are typically not stored for co-borrower
             consentToContact: false,
-          })
+          }
+          setFormData(loadedData)
+          // Reset initial data after loading
+          resetInitialData(loadedData)
         }
       } catch (error: any) {
         console.error('Failed to load existing co-borrower data:', error)
@@ -140,6 +150,17 @@ export default function CoBorrowerInfoPage2() {
 
     loadExistingData()
   }, [searchParams, router])
+  
+  // Auto-focus first field when form is ready
+  useEffect(() => {
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(() => {
+      if (maritalStatusSelectRef.current) {
+        maritalStatusSelectRef.current.focus()
+      }
+    }, 100)
+    return () => clearTimeout(timer)
+  }, []) // Run once on mount
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -223,28 +244,34 @@ export default function CoBorrowerInfoPage2() {
     setErrors({})
 
     try {
-      // Parse address if needed
-      const { streetAddress, city, state, zipCode } = parseAddress(formData.currentAddress)
+      // Only save if form data has changed
+      if (hasChanges) {
+        // Parse address if needed
+        const { streetAddress, city, state, zipCode } = parseAddress(formData.currentAddress)
 
-      // Save co-borrower additional information
-      const saveData = {
-        coBorrower: {
-          maritalStatus: formData.maritalStatus,
-          isVeteran: formData.isVeteran,
-          liveTogether: formData.liveTogether,
-          address: !formData.liveTogether ? streetAddress : undefined,
-          city: !formData.liveTogether ? city : undefined,
-          state: !formData.liveTogether ? state : undefined,
-          zipCode: !formData.liveTogether ? zipCode : undefined,
-          acceptTerms: formData.acceptTerms,
-          consentToContact: formData.consentToContact,
-        },
-        nextFormStep: 'review', // Set next form step to Getting Started Summary
+        // Save co-borrower additional information
+        const saveData = {
+          coBorrower: {
+            maritalStatus: formData.maritalStatus,
+            isVeteran: formData.isVeteran,
+            liveTogether: formData.liveTogether,
+            address: !formData.liveTogether ? streetAddress : undefined,
+            city: !formData.liveTogether ? city : undefined,
+            state: !formData.liveTogether ? state : undefined,
+            zipCode: !formData.liveTogether ? zipCode : undefined,
+            acceptTerms: formData.acceptTerms,
+            consentToContact: formData.consentToContact,
+          },
+          nextFormStep: 'review', // Set next form step to Getting Started Summary
+        }
+
+        await urlaApi.saveApplication(applicationId, saveData)
+        
+        // Reset initial data after successful save
+        resetInitialData(formData)
       }
 
-      await urlaApi.saveApplication(parseInt(applicationId, 10), saveData)
-
-      // Navigate to Getting Started Summary page
+      // Navigate to Getting Started Summary page (even if no changes were made)
       router.push(`/application/review?applicationId=${applicationId}`)
     } catch (error: any) {
       console.error('Error saving co-borrower information:', error)
@@ -302,6 +329,7 @@ export default function CoBorrowerInfoPage2() {
                 Co-applicant Marital Status <span className="text-red-500">*</span>
               </Label>
               <Select
+                ref={maritalStatusSelectRef}
                 value={formData.maritalStatus}
                 onValueChange={(value) => handleInputChange('maritalStatus', value)}
                 required

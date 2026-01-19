@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,6 +29,9 @@ export function AddressModal({ isOpen, onClose, onSave, initialAddress }: Addres
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
+  
+  // Ref for first input field to auto-focus
+  const streetInputRef = useRef<HTMLInputElement>(null)
 
   // Parse initial address if provided (format: "Street, City, State Zip")
   useEffect(() => {
@@ -132,6 +135,17 @@ export function AddressModal({ isOpen, onClose, onSave, initialAddress }: Addres
       document.body.style.overflow = ''
     }
   }, [isOpen])
+  
+  // Auto-focus first field when modal opens
+  useEffect(() => {
+    if (isOpen && streetInputRef.current) {
+      // Small delay to ensure modal is fully rendered
+      const timer = setTimeout(() => {
+        streetInputRef.current?.focus()
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [isOpen])
 
   if (!isOpen) return null
 
@@ -170,6 +184,7 @@ export function AddressModal({ isOpen, onClose, onSave, initialAddress }: Addres
               Street Address <span className="text-red-500">*</span>
             </label>
             <Input
+              ref={streetInputRef}
               id="modal-street"
               type="text"
               value={addressData.street}

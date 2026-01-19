@@ -1,15 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Form1003Layout, FormSection } from '@/components/urla/Form1003Layout'
 import { BorrowerBasicInfoForm, BorrowerBasicInfoFormData } from '@/components/urla/BorrowerBasicInfoForm'
+import { parsePhoneNumber } from '@/components/ui/PhoneInput'
 import { urlaApi } from '@/lib/api'
 import { authUtils } from '@/lib/auth'
 import { useAuth } from '@/hooks/useAuth'
+import { useFormChanges } from '@/hooks/useFormChanges'
 
 export default function BorrowerInfoPage1() {
   const router = useRouter()
@@ -23,7 +25,7 @@ export default function BorrowerInfoPage1() {
     email: '',
     confirmEmail: '',
     phone: '',
-    phoneType: '',
+    phoneType: 'MOBILE', // Default to Mobile Phone
     maritalStatus: '',
     isVeteran: false,
     currentAddress: '',
@@ -34,6 +36,12 @@ export default function BorrowerInfoPage1() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  
+  // Track form changes to avoid unnecessary saves
+  const { hasChanges, resetInitialData } = useFormChanges(formData)
+  
+  // Ref for first input field to auto-focus
+  const firstNameInputRef = useRef<HTMLInputElement>(null)
 
   // Load existing application data if applicationId is provided
   useEffect(() => {
@@ -54,22 +62,31 @@ export default function BorrowerInfoPage1() {
       
       // Try to load existing data for authenticated users
       try {
-        const appResponse = await urlaApi.getApplication(parseInt(applicationId, 10))
+        const appResponse = await urlaApi.getApplication(applicationId)
         const appData = appResponse.data
         
         if (appData?.borrower) {
           const borrowerData = appData.borrower as any
+          const loadedData = {
+            firstName: borrowerData?.firstName || '',
+            middleName: borrowerData?.middleName || '',
+            lastName: borrowerData?.lastName || '',
+            suffix: borrowerData?.suffix || '',
+            email: borrowerData?.email || '',
+            confirmEmail: borrowerData?.email || '',
+            phone: borrowerData?.phone || '',
+            phoneType: borrowerData?.phoneType || 'MOBILE',
+            maritalStatus: '',
+            isVeteran: false,
+            currentAddress: '',
+            sameAsMailing: true,
+          }
           setFormData(prev => ({
             ...prev,
-            firstName: borrowerData?.firstName || prev.firstName,
-            middleName: borrowerData?.middleName || prev.middleName,
-            lastName: borrowerData?.lastName || prev.lastName,
-            suffix: borrowerData?.suffix || prev.suffix,
-            email: borrowerData?.email || prev.email,
-            confirmEmail: borrowerData?.email || prev.confirmEmail,
-            phone: borrowerData?.phone || prev.phone,
-            phoneType: borrowerData?.phoneType || prev.phoneType,
+            ...loadedData,
           }))
+          // Reset initial data after loading
+          resetInitialData(loadedData)
         }
       } catch (error: any) {
         // Only log non-401 errors (401 means not authenticated, which is expected for new applications)
@@ -84,6 +101,13 @@ export default function BorrowerInfoPage1() {
 
     loadExistingData()
   }, [searchParams])
+  
+  // Auto-focus first field when form is loaded
+  useEffect(() => {
+    if (!isLoading && firstNameInputRef.current) {
+      firstNameInputRef.current.focus()
+    }
+  }, [isLoading])
 
   const sections: FormSection[] = [
     {
@@ -173,6 +197,9 @@ export default function BorrowerInfoPage1() {
     if (!formData.phone.trim()) {
       newErrors.phone = 'Phone number is required'
     }
+    if (!formData.phoneType.trim()) {
+      newErrors.phoneType = 'Phone type is required'
+    }
     // Only require password if user is not already authenticated (new registration)
     if (!isAuthenticated) {
       if (!password.trim()) {
@@ -207,21 +234,26 @@ export default function BorrowerInfoPage1() {
       const existingApplicationId = applicationIdParam || applicationIdFromStorage
 
       if (existingApplicationId) {
-        // Update existing borrower data
-        const saveData = {
-          borrower: {
-            firstName: formData.firstName,
-            lastName: formData.lastName,
-            middleName: formData.middleName || undefined,
-            suffix: formData.suffix || undefined,
-            email: formData.email,
-            phone: formData.phone.replace(/\D/g, ''),
-            phoneType: formData.phoneType || undefined,
-          },
-          nextFormStep: 'borrower-info-2',
-        }
+        // Only save if form data has changed
+        if (hasChanges) {
+          const saveData = {
+            borrower: {
+              firstName: formData.firstName,
+              lastName: formData.lastName,
+              middleName: formData.middleName || undefined,
+              suffix: formData.suffix || undefined,
+              email: formData.email,
+              phone: parsePhoneNumber(formData.phone),
+              phoneType: formData.phoneType || 'MOBILE',
+            },
+            nextFormStep: 'borrower-info-2',
+          }
 
-        await urlaApi.saveApplication(parseInt(existingApplicationId, 10), saveData)
+          await urlaApi.saveApplication(existingApplicationId, saveData)
+          
+          // Reset initial data after successful save
+          resetInitialData(formData)
+        }
 
         // Store borrower data in sessionStorage for review page
         const borrowerData = {
@@ -231,7 +263,7 @@ export default function BorrowerInfoPage1() {
         }
         sessionStorage.setItem('borrowerData', JSON.stringify(borrowerData))
 
-        // Navigate to borrower-info-2
+        // Navigate to borrower-info-2 (even if no changes were made)
         router.push(`/application/borrower-info-2?applicationId=${existingApplicationId}`)
       } else {
         // Create new borrower and application
@@ -388,13 +420,14 @@ export default function BorrowerInfoPage1() {
             showMiddleName={false}
             showSuffix={false}
             showConfirmEmail={false}
-            showPhoneType={false}
+            showPhoneType={true}
             showMaritalStatus={false}
             showVeteran={false}
             showAddress={false}
             showSameAsMailing={false}
             phoneRequired={true}
             useLegalLabel={false}
+            firstNameInputRef={firstNameInputRef}
           />
 
           {!isAuthenticated && (

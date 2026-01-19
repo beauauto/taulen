@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,7 +8,9 @@ import { Label } from '@/components/ui/label'
 import { Form1003Layout, FormSection } from '@/components/urla/Form1003Layout'
 import { Select } from '@/components/ui/select'
 import { BorrowerBasicInfoForm, BorrowerBasicInfoFormData } from '@/components/urla/BorrowerBasicInfoForm'
+import { parsePhoneNumber } from '@/components/ui/PhoneInput'
 import { urlaApi } from '@/lib/api'
+import { useFormChanges } from '@/hooks/useFormChanges'
 
 export default function CoBorrowerInfoPage1() {
   const router = useRouter()
@@ -21,7 +23,7 @@ export default function CoBorrowerInfoPage1() {
     email: '',
     confirmEmail: '',
     phone: '',
-    phoneType: '',
+    phoneType: 'MOBILE', // Default to Mobile Phone
     maritalStatus: '',
     isVeteran: false,
     currentAddress: '',
@@ -30,6 +32,12 @@ export default function CoBorrowerInfoPage1() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  
+  // Track form changes to avoid unnecessary saves
+  const { hasChanges, resetInitialData } = useFormChanges(formData)
+  
+  // Ref for first input field to auto-focus
+  const firstNameInputRef = useRef<HTMLInputElement>(null)
 
   // Load existing co-borrower data if applicationId is provided
   useEffect(() => {
@@ -50,22 +58,31 @@ export default function CoBorrowerInfoPage1() {
       
       // Try to load existing data for authenticated users
       try {
-        const appResponse = await urlaApi.getApplication(parseInt(applicationId, 10))
+        const appResponse = await urlaApi.getApplication(applicationId)
         const appData = appResponse.data
         
         if (appData?.coBorrower) {
           const coBorrowerData = appData.coBorrower as any
+          const loadedData = {
+            firstName: coBorrowerData?.firstName || '',
+            middleName: '',
+            lastName: coBorrowerData?.lastName || '',
+            suffix: '',
+            email: coBorrowerData?.email || '',
+            confirmEmail: coBorrowerData?.email || '',
+            phone: coBorrowerData?.phone || '',
+            phoneType: coBorrowerData?.phoneType || 'MOBILE',
+            maritalStatus: '',
+            isVeteran: false,
+            currentAddress: '',
+            sameAsMailing: true,
+          }
           setFormData(prev => ({
             ...prev,
-            firstName: coBorrowerData?.firstName || prev.firstName,
-            middleName: coBorrowerData?.middleName || prev.middleName,
-            lastName: coBorrowerData?.lastName || prev.lastName,
-            suffix: coBorrowerData?.suffix || prev.suffix,
-            email: coBorrowerData?.email || prev.email,
-            confirmEmail: coBorrowerData?.email || prev.confirmEmail,
-            phone: coBorrowerData?.phone || prev.phone,
-            phoneType: coBorrowerData?.phoneType || prev.phoneType,
+            ...loadedData,
           }))
+          // Reset initial data after loading
+          resetInitialData(loadedData)
         }
       } catch (error: any) {
         // Only log non-401 errors (401 means not authenticated)
@@ -80,6 +97,13 @@ export default function CoBorrowerInfoPage1() {
 
     loadExistingData()
   }, [searchParams])
+  
+  // Auto-focus first field when form is loaded
+  useEffect(() => {
+    if (!isLoading && firstNameInputRef.current) {
+      firstNameInputRef.current.focus()
+    }
+  }, [isLoading])
 
   const sections: FormSection[] = [
     {
@@ -147,7 +171,7 @@ export default function CoBorrowerInfoPage1() {
     if (!formData.phone.trim()) {
       newErrors.phone = 'Phone number is required'
     }
-    if (!formData.phoneType) {
+    if (!formData.phoneType.trim()) {
       newErrors.phoneType = 'Phone type is required'
     }
 
@@ -173,23 +197,27 @@ export default function CoBorrowerInfoPage1() {
     setErrors({})
 
     try {
-      // Save basic co-borrower information (will be updated in second form)
-      const saveData = {
-        coBorrower: {
-          firstName: formData.firstName,
-          middleName: formData.middleName || undefined,
-          lastName: formData.lastName,
-          suffix: formData.suffix || undefined,
-          email: formData.email,
-          phone: formData.phone.replace(/\D/g, ''),
-          phoneType: formData.phoneType,
-        },
-        nextFormStep: 'co-borrower-info-2',
+      // Only save if form data has changed
+      if (hasChanges) {
+        // Save basic co-borrower information (will be updated in second form)
+        const saveData = {
+          coBorrower: {
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            email: formData.email,
+            phone: parsePhoneNumber(formData.phone),
+            phoneType: formData.phoneType || 'MOBILE',
+          },
+          nextFormStep: 'co-borrower-info-2',
+        }
+
+        await urlaApi.saveApplication(applicationId, saveData)
+        
+        // Reset initial data after successful save
+        resetInitialData(formData)
       }
 
-      await urlaApi.saveApplication(parseInt(applicationId, 10), saveData)
-
-      // Navigate to co-borrower-info-2
+      // Navigate to co-borrower-info-2 (even if no changes were made)
       router.push(`/application/co-borrower-info-2?applicationId=${applicationId}`)
     } catch (error: any) {
       console.error('Error saving co-borrower basic information:', error)
@@ -257,16 +285,17 @@ export default function CoBorrowerInfoPage1() {
           formData={formData}
           errors={errors}
           onInputChange={handleInputChange}
-          showMiddleName={true}
-          showSuffix={true}
+          showMiddleName={false}
+          showSuffix={false}
           showConfirmEmail={false}
-          showPhoneType={true}
+            showPhoneType={true}
           showMaritalStatus={false}
           showVeteran={false}
           showAddress={false}
           showSameAsMailing={false}
           phoneRequired={true}
           useLegalLabel={false}
+          firstNameInputRef={firstNameInputRef}
         />
 
         <div className="pt-4 flex justify-center">

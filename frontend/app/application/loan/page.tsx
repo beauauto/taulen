@@ -40,7 +40,7 @@ export default function LoanPage() {
       if (applicationId && token) {
         try {
           // Load application data from database
-          const appResponse = await urlaApi.getApplication(parseInt(applicationId, 10))
+          const appResponse = await urlaApi.getApplication(applicationId)
           const appData = appResponse.data
           
           // If application exists, load loanPurpose from database
@@ -290,7 +290,7 @@ export default function LoanPage() {
     // Save loan data to database if application exists
     if (applicationId) {
       try {
-        await urlaApi.saveApplication(parseInt(applicationId, 10), {
+        await urlaApi.saveApplication(applicationId, {
           loan: loanDataToSave,
           nextFormStep: 'loan-completed',
         })

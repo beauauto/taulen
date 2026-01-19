@@ -10,7 +10,7 @@ import (
 
 // Borrower represents a borrower in the database
 type Borrower struct {
-	ID                          int64
+	ID                          string
 	EmailAddress                sql.NullString
 	PasswordHash                sql.NullString
 	EmailVerified               sql.NullBool
@@ -134,7 +134,7 @@ func (r *BorrowerRepository) GetByPhone(phone string) (*Borrower, error) {
 }
 
 // GetByID retrieves a borrower by ID
-func (r *BorrowerRepository) GetByID(id int64) (*Borrower, error) {
+func (r *BorrowerRepository) GetByID(id string) (*Borrower, error) {
 	query := `SELECT id, email_address, password_hash, email_verified, email_verification_token, 
 	          email_verification_expires_at, password_reset_token, password_reset_expires_at, 
 	          last_password_change_at, mfa_enabled, mfa_secret, mfa_backup_codes, mfa_setup_at, 
@@ -315,7 +315,7 @@ func (r *BorrowerRepository) ClearVerificationCode(email string) error {
 }
 
 // UpdatePassword updates a borrower's password
-func (r *BorrowerRepository) UpdatePassword(borrowerID int64, passwordHash string) error {
+func (r *BorrowerRepository) UpdatePassword(borrowerID string, passwordHash string) error {
 	query := `UPDATE borrower 
 	          SET password_hash = $1,
 	              last_password_change_at = CURRENT_TIMESTAMP,
@@ -327,7 +327,7 @@ func (r *BorrowerRepository) UpdatePassword(borrowerID int64, passwordHash strin
 }
 
 // UpdateName updates a borrower's name
-func (r *BorrowerRepository) UpdateName(borrowerID int64, firstName, lastName string) error {
+func (r *BorrowerRepository) UpdateName(borrowerID string, firstName, lastName string) error {
 	query := `UPDATE borrower 
 	          SET first_name = $1,
 	              last_name = $2,
@@ -339,7 +339,7 @@ func (r *BorrowerRepository) UpdateName(borrowerID int64, firstName, lastName st
 }
 
 // UpdateBorrowerInfo updates borrower personal information (date of birth, etc.)
-func (r *BorrowerRepository) UpdateBorrowerInfo(id int64, dateOfBirth *time.Time) error {
+func (r *BorrowerRepository) UpdateBorrowerInfo(id string, dateOfBirth *time.Time) error {
 	query := `UPDATE borrower SET 
 	          birth_date = $1, 
 	          updated_at = CURRENT_TIMESTAMP
@@ -349,7 +349,7 @@ func (r *BorrowerRepository) UpdateBorrowerInfo(id int64, dateOfBirth *time.Time
 }
 
 // UpdateBorrowerDetails updates borrower details including middle name, suffix, marital status, and phone
-func (r *BorrowerRepository) UpdateBorrowerDetails(id int64, middleName, suffix, maritalStatus *string, phone, phoneType *string) error {
+func (r *BorrowerRepository) UpdateBorrowerDetails(id string, middleName, suffix, maritalStatus *string, phone, phoneType *string) error {
 	query := `UPDATE borrower SET 
 	          middle_name = COALESCE($1, middle_name),
 	          suffix = COALESCE($2, suffix),
@@ -364,7 +364,7 @@ func (r *BorrowerRepository) UpdateBorrowerDetails(id int64, middleName, suffix,
 }
 
 // UpdateEmail updates a borrower's email address
-func (r *BorrowerRepository) UpdateEmail(id int64, email string) error {
+func (r *BorrowerRepository) UpdateEmail(id string, email string) error {
 	query := `UPDATE borrower SET 
 	          email_address = $1,
 	          updated_at = CURRENT_TIMESTAMP
@@ -374,7 +374,7 @@ func (r *BorrowerRepository) UpdateEmail(id int64, email string) error {
 }
 
 // UpdateBorrowerConsentsAndMilitary updates military service status and consents
-func (r *BorrowerRepository) UpdateBorrowerConsentsAndMilitary(id int64, militaryServiceStatus, consentToCreditCheck, consentToContact *bool) error {
+func (r *BorrowerRepository) UpdateBorrowerConsentsAndMilitary(id string, militaryServiceStatus, consentToCreditCheck, consentToContact *bool) error {
 	query := `UPDATE borrower SET 
 	          military_service_status = COALESCE($1, military_service_status),
 	          consent_to_credit_check = COALESCE($2, consent_to_credit_check),
@@ -386,16 +386,16 @@ func (r *BorrowerRepository) UpdateBorrowerConsentsAndMilitary(id int64, militar
 }
 
 // CreateResidence creates a residence record for a borrower
-func (r *BorrowerRepository) CreateResidence(borrowerID int64, residencyType, address, city, state, zipCode string) (int64, error) {
+func (r *BorrowerRepository) CreateResidence(borrowerID string, residencyType, address, city, state, zipCode string) (string, error) {
 	query := `INSERT INTO residence (borrower_id, residency_type, address_line_text, city_name, state_code, postal_code) 
 	          VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`
-	var residenceID int64
+	var residenceID string
 	err := r.db.QueryRow(query, borrowerID, residencyType, address, city, state, zipCode).Scan(&residenceID)
 	return residenceID, err
 }
 
 // GetCurrentResidence retrieves the current residence for a borrower
-func (r *BorrowerRepository) GetCurrentResidence(borrowerID int64) (address, city, state, zipCode string, err error) {
+func (r *BorrowerRepository) GetCurrentResidence(borrowerID string) (address, city, state, zipCode string, err error) {
 	query := `SELECT address_line_text, city_name, state_code, postal_code 
 	          FROM residence 
 	          WHERE borrower_id = $1 AND residency_type = 'BorrowerCurrentResidence' 
@@ -425,31 +425,31 @@ func (r *BorrowerRepository) GetCurrentResidence(borrowerID int64) (address, cit
 }
 
 // GetCurrentResidenceID retrieves the ID of the current residence for a borrower
-func (r *BorrowerRepository) GetCurrentResidenceID(borrowerID int64) (int64, error) {
+func (r *BorrowerRepository) GetCurrentResidenceID(borrowerID string) (string, error) {
 	query := `SELECT id 
 	          FROM residence 
 	          WHERE borrower_id = $1 AND residency_type = 'BorrowerCurrentResidence' 
 	          ORDER BY id DESC LIMIT 1`
-	var residenceID int64
+	var residenceID string
 	err := r.db.QueryRow(query, borrowerID).Scan(&residenceID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return 0, nil // No residence found, return 0
+			return "", nil // No residence found, return empty string
 		}
-		return 0, err
+		return "", err
 	}
 	return residenceID, nil
 }
 
 // UpdateOrCreateResidence updates existing residence or creates a new one
-func (r *BorrowerRepository) UpdateOrCreateResidence(borrowerID int64, residencyType, address, city, state, zipCode string) error {
+func (r *BorrowerRepository) UpdateOrCreateResidence(borrowerID string, residencyType, address, city, state, zipCode string) error {
 	// Check if residence exists
 	residenceID, err := r.GetCurrentResidenceID(borrowerID)
 	if err != nil {
 		return err
 	}
 
-	if residenceID > 0 {
+	if residenceID != "" {
 		// Update existing residence
 		query := `UPDATE residence 
 		          SET address_line_text = $1,
@@ -470,20 +470,36 @@ func (r *BorrowerRepository) UpdateOrCreateResidence(borrowerID int64, residency
 // Borrowers are linked to deals through the deal.borrower_id relationship or a junction table if needed
 
 // CreateCoBorrower creates a co-borrower record (without email/password since they don't have an account)
-func (r *BorrowerRepository) CreateCoBorrower(firstName, lastName, middleName, suffix, email, phone, phoneType, maritalStatus string, isVeteran bool) (int64, error) {
-	var borrowerID int64
+func (r *BorrowerRepository) CreateCoBorrower(firstName, lastName, middleName, suffix, email, phone, phoneType, maritalStatus string, isVeteran bool) (string, error) {
+	var borrowerID string
 	
 	// Set phone based on phoneType
+	// phoneType can be empty (NULL) - this is allowed
+	// Phone number should be stored even when phoneType is NULL
+	// When phoneType is NULL, store in mobile_phone as the default storage location
+	// but phoneType itself remains NULL (no default value assigned to phoneType)
 	var homePhone, mobilePhone, workPhone sql.NullString
-	switch phoneType {
-	case "HOME":
-		homePhone = sql.NullString{String: phone, Valid: true}
-	case "MOBILE":
-		mobilePhone = sql.NullString{String: phone, Valid: true}
-	case "WORK":
-		workPhone = sql.NullString{String: phone, Valid: true}
-	default:
-		mobilePhone = sql.NullString{String: phone, Valid: true} // Default to mobile
+	if phone != "" {
+		if phoneType != "" {
+			// phoneType is provided - use it to determine which field
+			switch phoneType {
+			case "HOME":
+				homePhone = sql.NullString{String: phone, Valid: true}
+			case "MOBILE":
+				mobilePhone = sql.NullString{String: phone, Valid: true}
+			case "WORK":
+				workPhone = sql.NullString{String: phone, Valid: true}
+			}
+			// If phoneType is provided but unknown, store in mobile_phone as fallback
+			if !homePhone.Valid && !mobilePhone.Valid && !workPhone.Valid {
+				mobilePhone = sql.NullString{String: phone, Valid: true}
+			}
+		} else {
+			// phoneType is NULL/empty - store phone in mobile_phone
+			// This preserves the phone data even when phoneType is not specified
+			// phoneType itself remains NULL (no default value)
+			mobilePhone = sql.NullString{String: phone, Valid: true}
+		}
 	}
 	
 	// Set marital status (normalize to match database constraint)
@@ -524,14 +540,14 @@ func (r *BorrowerRepository) CreateCoBorrower(firstName, lastName, middleName, s
 	err := r.db.QueryRow(query, firstName, lastName, middleNameNull, suffixNull, emailNull,
 		homePhone, mobilePhone, workPhone, maritalStatusNull, militaryServiceStatus).Scan(&borrowerID)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 	
 	return borrowerID, nil
 }
 
 // LinkBorrowerToDeal links a borrower to a deal via borrower_progress table
-func (r *BorrowerRepository) LinkBorrowerToDeal(borrowerID, dealID int64) error {
+func (r *BorrowerRepository) LinkBorrowerToDeal(borrowerID, dealID string) error {
 	query := `INSERT INTO borrower_progress (borrower_id, deal_id, created_at, updated_at) 
 	          VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 	          ON CONFLICT (borrower_id, deal_id) DO NOTHING`
@@ -540,7 +556,7 @@ func (r *BorrowerRepository) LinkBorrowerToDeal(borrowerID, dealID int64) error 
 }
 
 // GetCoBorrowersByDealID retrieves all co-borrowers (non-primary) for a deal
-func (r *BorrowerRepository) GetCoBorrowersByDealID(dealID, primaryBorrowerID int64) ([]*Borrower, error) {
+func (r *BorrowerRepository) GetCoBorrowersByDealID(dealID, primaryBorrowerID string) ([]*Borrower, error) {
 	query := `SELECT b.id, b.first_name, b.middle_name, b.last_name, b.suffix, 
 	                 b.email_address, b.mobile_phone, b.home_phone, b.work_phone,
 	                 b.marital_status, b.military_service_status

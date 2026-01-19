@@ -23,16 +23,16 @@ func NewDealRepository() *DealRepository {
 // borrowerID can be NULL initially, set later when primary borrower is created
 // status defaults to 'Draft' if empty
 // Returns the deal ID (which is the primary identifier for an application)
-func (r *DealRepository) CreateDeal(userID string, borrowerID *int64, loanPurpose string, loanAmount float64, status string) (int64, error) {
+func (r *DealRepository) CreateDeal(userID string, borrowerID *string, loanPurpose string, loanAmount float64, status string) (string, error) {
 	// Start transaction
 	tx, err := r.db.Begin()
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 	defer tx.Rollback()
 
 	// Create deal first
-	var dealID int64
+	var dealID string
 	applicationType := "IndividualCredit" // Default, can be updated later for joint applications
 	totalBorrowers := 1
 	if borrowerID != nil {
@@ -48,30 +48,30 @@ func (r *DealRepository) CreateDeal(userID string, borrowerID *int64, loanPurpos
 
 	// Build query with optional primary_borrower_id
 	if borrowerID != nil {
-		dealQuery := `INSERT INTO deal (application_type, total_borrowers, application_date, status, primary_borrower_id) 
-		              VALUES ($1, $2, CURRENT_DATE, $3::deal_status_enum, $4) RETURNING id`
-		err = tx.QueryRow(dealQuery, applicationType, totalBorrowers, status, *borrowerID).Scan(&dealID)
+		dealQuery := `INSERT INTO deal (application_type, total_borrowers, application_date, primary_borrower_id) 
+		              VALUES ($1, $2, CURRENT_DATE, $3) RETURNING id`
+		err = tx.QueryRow(dealQuery, applicationType, totalBorrowers, *borrowerID).Scan(&dealID)
 	} else {
-		dealQuery := `INSERT INTO deal (application_type, total_borrowers, application_date, status) 
-		              VALUES ($1, $2, CURRENT_DATE, $3::deal_status_enum) RETURNING id`
-		err = tx.QueryRow(dealQuery, applicationType, totalBorrowers, status).Scan(&dealID)
+		dealQuery := `INSERT INTO deal (application_type, total_borrowers, application_date) 
+		              VALUES ($1, $2, CURRENT_DATE) RETURNING id`
+		err = tx.QueryRow(dealQuery, applicationType, totalBorrowers).Scan(&dealID)
 	}
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 
 	// Create loan record linked to deal
 	loanQuery := `INSERT INTO loan (deal_id, loan_purpose_type, loan_amount_requested) 
 	              VALUES ($1, $2, $3) RETURNING id`
-	var loanID int64
+	var loanID string
 	err = tx.QueryRow(loanQuery, dealID, loanPurpose, loanAmount).Scan(&loanID)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 
 	// Commit transaction
 	if err = tx.Commit(); err != nil {
-		return 0, err
+		return "", err
 	}
 
 	// Return deal ID as the application identifier
@@ -80,7 +80,7 @@ func (r *DealRepository) CreateDeal(userID string, borrowerID *int64, loanPurpos
 
 // GetDealByID retrieves a deal by ID with associated loan information
 // Returns a row with deal and loan information
-func (r *DealRepository) GetDealByID(dealID int64) (*sql.Row, error) {
+func (r *DealRepository) GetDealByID(dealID string) (*sql.Row, error) {
 	query := `SELECT d.id, d.loan_number, d.universal_loan_identifier, d.agency_case_identifier,
 		d.application_type, d.total_borrowers, d.application_date, d.created_at, d.primary_borrower_id,
 		d.current_form_step,
@@ -109,7 +109,7 @@ func (r *DealRepository) GetDealByLoanNumber(loanNumber string) (*sql.Row, error
 }
 
 // UpdateDeal updates deal information
-func (r *DealRepository) UpdateDeal(dealID int64, loanNumber, universalLoanIdentifier, agencyCaseIdentifier *string, applicationType *string, totalBorrowers *int) error {
+func (r *DealRepository) UpdateDeal(dealID string, loanNumber, universalLoanIdentifier, agencyCaseIdentifier *string, applicationType *string, totalBorrowers *int) error {
 	query := `UPDATE deal SET 
 		loan_number = COALESCE($2, loan_number),
 		universal_loan_identifier = COALESCE($3, universal_loan_identifier),
@@ -123,21 +123,21 @@ func (r *DealRepository) UpdateDeal(dealID int64, loanNumber, universalLoanIdent
 }
 
 // UpdateCurrentFormStep updates the current form step for a deal
-func (r *DealRepository) UpdateCurrentFormStep(dealID int64, formStep string) error {
+func (r *DealRepository) UpdateCurrentFormStep(dealID string, formStep string) error {
 	query := `UPDATE deal SET current_form_step = $2 WHERE id = $1`
 	_, err := r.db.Exec(query, dealID, formStep)
 	return err
 }
 
 // UpdateToJointApplication updates a deal to joint application type
-func (r *DealRepository) UpdateToJointApplication(dealID int64) error {
+func (r *DealRepository) UpdateToJointApplication(dealID string) error {
 	applicationType := "JointCredit"
 	totalBorrowers := 2
 	return r.UpdateDeal(dealID, nil, nil, nil, &applicationType, &totalBorrowers)
 }
 
 // UpdateLoan updates loan information for a deal
-func (r *DealRepository) UpdateLoan(dealID int64, loanPurpose, propertyType, manufacturedHomeWidthType, titleMannerType *string, loanAmount *float64, loanTermMonths *int, interestRate *float64) error {
+func (r *DealRepository) UpdateLoan(dealID string, loanPurpose, propertyType, manufacturedHomeWidthType, titleMannerType *string, loanAmount *float64, loanTermMonths *int, interestRate *float64) error {
 	query := `UPDATE loan SET 
 		loan_purpose_type = COALESCE($2, loan_purpose_type),
 		loan_amount_requested = COALESCE($3, loan_amount_requested),
@@ -153,10 +153,10 @@ func (r *DealRepository) UpdateLoan(dealID int64, loanPurpose, propertyType, man
 }
 
 // CreateSubjectProperty creates a subject property record for a deal
-func (r *DealRepository) CreateSubjectProperty(dealID int64, address, city, state, zipCode string, estimatedValue float64) (int64, error) {
+func (r *DealRepository) CreateSubjectProperty(dealID string, address, city, state, zipCode string, estimatedValue float64) (string, error) {
 	query := `INSERT INTO subject_property (deal_id, address_line_text, city_name, state_code, postal_code, estimated_value, property_usage_type) 
 	          VALUES ($1, $2, $3, $4, $5, $6, 'PrimaryResidence') RETURNING id`
-	var propertyID int64
+	var propertyID string
 	err := r.db.QueryRow(query, dealID, address, city, state, zipCode, estimatedValue).Scan(&propertyID)
 	return propertyID, err
 }
@@ -177,7 +177,7 @@ func (r *DealRepository) GetDealsByUserID(userID string) (*sql.Rows, error) {
 }
 
 // GetDealsByBorrowerID retrieves all deals for a borrower, ordered by latest modification
-func (r *DealRepository) GetDealsByBorrowerID(borrowerID int64) (*sql.Rows, error) {
+func (r *DealRepository) GetDealsByBorrowerID(borrowerID string) (*sql.Rows, error) {
 	query := `SELECT d.id, d.loan_number, d.application_type, d.application_date, d.created_at, d.status,
 		l.loan_purpose_type, l.loan_amount_requested,
 		COALESCE(dp.updated_at, d.created_at) as last_updated_at,

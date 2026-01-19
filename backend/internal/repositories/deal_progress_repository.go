@@ -7,8 +7,8 @@ import (
 
 // DealProgress represents progress tracking for a deal
 type DealProgress struct {
-	ID                        int64
-	DealID                    int64
+	ID                        string
+	DealID                    string
 	Section1aComplete         bool
 	Section1bComplete         bool
 	Section1cComplete         bool
@@ -52,7 +52,7 @@ func NewDealProgressRepository() *DealProgressRepository {
 }
 
 // GetByDealID retrieves progress for a deal
-func (r *DealProgressRepository) GetByDealID(dealID int64) (*DealProgress, error) {
+func (r *DealProgressRepository) GetByDealID(dealID string) (*DealProgress, error) {
 	query := `SELECT id, deal_id, section_1a_complete, section_1b_complete, section_1c_complete,
 	          section_1d_complete, section_1e_complete, section_2a_complete, section_2b_complete,
 	          section_2c_complete, section_2d_complete, section_3_complete, section_4_complete,
@@ -90,7 +90,7 @@ func (r *DealProgressRepository) GetByDealID(dealID int64) (*DealProgress, error
 }
 
 // UpdateSection marks a section as complete or incomplete
-func (r *DealProgressRepository) UpdateSection(dealID int64, section string, complete bool) error {
+func (r *DealProgressRepository) UpdateSection(dealID string, section string, complete bool) error {
 	// Map section names to column names
 	sectionMap := map[string]string{
 		"Section1a_PersonalInfo":        "section_1a_complete",
@@ -133,7 +133,7 @@ func (r *DealProgressRepository) UpdateSection(dealID int64, section string, com
 }
 
 // UpdateNotes updates progress notes
-func (r *DealProgressRepository) UpdateNotes(dealID int64, notes string) error {
+func (r *DealProgressRepository) UpdateNotes(dealID string, notes string) error {
 	query := `UPDATE deal_progress 
 	          SET progress_notes = $1, updated_at = CURRENT_TIMESTAMP
 	          WHERE deal_id = $2`
@@ -142,7 +142,7 @@ func (r *DealProgressRepository) UpdateNotes(dealID int64, notes string) error {
 }
 
 // GetNextIncompleteSection returns the first incomplete section for resumption
-func (r *DealProgressRepository) GetNextIncompleteSection(dealID int64) (string, error) {
+func (r *DealProgressRepository) GetNextIncompleteSection(dealID string) (string, error) {
 	progress, err := r.GetByDealID(dealID)
 	if err != nil {
 		return "", err

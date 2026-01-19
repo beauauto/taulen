@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 function ApplicationForm() {
   const params = useParams()
   const router = useRouter()
-  const applicationId = params?.id ? parseInt(params.id as string, 10) : undefined
+  const applicationId = params?.id ? (params.id as string) : undefined
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {

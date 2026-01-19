@@ -1,8 +1,8 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"taulen/backend/internal/middleware"
@@ -36,21 +36,19 @@ func (h *URLAHandler) CreateApplication(c *gin.Context) {
 		return
 	}
 
-	// Try to parse as borrower ID (int64), if fails, treat as employee (UUID)
-	borrowerID, err := strconv.ParseInt(userID, 10, 64)
-	if err == nil {
-		// It's a borrower ID
-		response, err := h.urlaService.CreateApplicationForBorrower(borrowerID, req)
+	// Both borrowers and employees now use UUID strings
+	// Try to create application for borrower first (if userID is a borrower)
+	// For now, we'll check if it's a borrower by attempting to fetch from borrower table
+	// If that fails, treat as employee
+	response, err := h.urlaService.CreateApplicationForBorrower(userID, req)
+	if err != nil {
+		// If borrower creation fails, try as employee
+		response, err = h.urlaService.CreateApplication(userID, req)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusCreated, response)
-		return
 	}
-
-	// It's an employee UUID
-	response, err := h.urlaService.CreateApplication(userID, req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -62,13 +60,12 @@ func (h *URLAHandler) CreateApplication(c *gin.Context) {
 // GetApplication handles retrieving an application by ID
 func (h *URLAHandler) GetApplication(c *gin.Context) {
 	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	if idStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid application ID"})
 		return
 	}
 
-	application, err := h.urlaService.GetApplication(id)
+	application, err := h.urlaService.GetApplication(idStr)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -80,8 +77,7 @@ func (h *URLAHandler) GetApplication(c *gin.Context) {
 // UpdateApplicationStatus handles updating application status
 func (h *URLAHandler) UpdateApplicationStatus(c *gin.Context) {
 	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	if idStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid application ID"})
 		return
 	}
@@ -94,7 +90,7 @@ func (h *URLAHandler) UpdateApplicationStatus(c *gin.Context) {
 		return
 	}
 
-	err = h.urlaService.UpdateApplicationStatus(id, req.Status)
+	err := h.urlaService.UpdateApplicationStatus(idStr, req.Status)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -106,8 +102,7 @@ func (h *URLAHandler) UpdateApplicationStatus(c *gin.Context) {
 // SaveApplication handles saving application data (auto-save)
 func (h *URLAHandler) SaveApplication(c *gin.Context) {
 	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	if idStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid application ID"})
 		return
 	}
@@ -126,7 +121,7 @@ func (h *URLAHandler) SaveApplication(c *gin.Context) {
 
 	// Save borrower information if provided
 	if borrowerData, ok := req["borrower"].(map[string]interface{}); ok {
-		err = h.urlaService.SaveBorrowerData(id, borrowerData, nextFormStep)
+		err := h.urlaService.SaveBorrowerData(idStr, borrowerData, nextFormStep)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save borrower data: " + err.Error()})
 			return
@@ -135,8 +130,10 @@ func (h *URLAHandler) SaveApplication(c *gin.Context) {
 
 	// Save co-borrower information if provided
 	if coBorrowerData, ok := req["coBorrower"].(map[string]interface{}); ok {
-		err = h.urlaService.SaveCoBorrowerData(id, coBorrowerData, nextFormStep)
+		log.Printf("SaveApplication: Saving co-borrower data: %+v", coBorrowerData)
+		err := h.urlaService.SaveCoBorrowerData(idStr, coBorrowerData, nextFormStep)
 		if err != nil {
+			log.Printf("SaveApplication: Error saving co-borrower data: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save co-borrower data: " + err.Error()})
 			return
 		}
@@ -144,7 +141,7 @@ func (h *URLAHandler) SaveApplication(c *gin.Context) {
 
 	// Save loan information if provided
 	if loanData, ok := req["loan"].(map[string]interface{}); ok {
-		err = h.urlaService.SaveLoanData(id, loanData, nextFormStep)
+		err := h.urlaService.SaveLoanData(idStr, loanData, nextFormStep)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save loan data: " + err.Error()})
 			return
@@ -153,7 +150,7 @@ func (h *URLAHandler) SaveApplication(c *gin.Context) {
 
 	// If only nextFormStep is provided (no borrower, coBorrower, or loan data), update the form step directly
 	if nextFormStep != "" && req["borrower"] == nil && req["coBorrower"] == nil && req["loan"] == nil {
-		err = h.urlaService.UpdateCurrentFormStep(id, nextFormStep)
+		err := h.urlaService.UpdateCurrentFormStep(idStr, nextFormStep)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update form step: " + err.Error()})
 			return
@@ -168,13 +165,12 @@ func (h *URLAHandler) SaveApplication(c *gin.Context) {
 // GetApplicationProgress handles getting application completion progress
 func (h *URLAHandler) GetApplicationProgress(c *gin.Context) {
 	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	if idStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid application ID"})
 		return
 	}
 
-	progress, err := h.urlaService.GetDealProgress(id)
+	progress, err := h.urlaService.GetDealProgress(idStr)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Progress not found"})
 		return
@@ -186,8 +182,7 @@ func (h *URLAHandler) GetApplicationProgress(c *gin.Context) {
 // UpdateApplicationProgressSection handles updating a section's completion status
 func (h *URLAHandler) UpdateApplicationProgressSection(c *gin.Context) {
 	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	if idStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid application ID"})
 		return
 	}
@@ -201,7 +196,7 @@ func (h *URLAHandler) UpdateApplicationProgressSection(c *gin.Context) {
 		return
 	}
 
-	err = h.urlaService.UpdateDealProgressSection(id, req.Section, req.Complete)
+	err := h.urlaService.UpdateDealProgressSection(idStr, req.Section, req.Complete)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -213,8 +208,7 @@ func (h *URLAHandler) UpdateApplicationProgressSection(c *gin.Context) {
 // UpdateApplicationProgressNotes handles updating progress notes
 func (h *URLAHandler) UpdateApplicationProgressNotes(c *gin.Context) {
 	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	if idStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid application ID"})
 		return
 	}
@@ -227,7 +221,7 @@ func (h *URLAHandler) UpdateApplicationProgressNotes(c *gin.Context) {
 		return
 	}
 
-	err = h.urlaService.UpdateDealProgressNotes(id, req.Notes)
+	err := h.urlaService.UpdateDealProgressNotes(idStr, req.Notes)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -244,22 +238,17 @@ func (h *URLAHandler) GetMyApplications(c *gin.Context) {
 		return
 	}
 
-	// Determine if userID is a borrower (numeric) or employee (UUID)
-	// Borrowers have numeric IDs, employees have UUID strings
-	borrowerID, parseErr := strconv.ParseInt(userID, 10, 64)
-	if parseErr == nil {
-		// It's a borrower ID (numeric) - get borrower applications
-		applications, err := h.urlaService.GetApplicationsByBorrower(borrowerID)
+	// Both borrowers and employees now use UUID strings
+	// Try to get borrower applications first
+	applications, err := h.urlaService.GetApplicationsByBorrower(userID)
+	if err != nil {
+		// If borrower lookup fails, try as employee
+		applications, err = h.urlaService.GetApplicationsByEmployee(userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve applications"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"applications": applications})
-		return
 	}
-
-	// It's an employee UUID - get employee applications
-	applications, err := h.urlaService.GetApplicationsByEmployee(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve applications"})
 		return

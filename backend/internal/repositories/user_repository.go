@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"database/sql"
-	"strconv"
 	"taulen/backend/internal/database"
 )
 
@@ -49,23 +48,17 @@ func NewUserRepository() *UserRepository {
 
 // GetByID retrieves a user by ID
 func (r *UserRepository) GetByID(id string) (*User, error) {
-	// Convert string ID to int for the user table (id is SERIAL)
-	userIDInt, err := strconv.Atoi(id)
-	if err != nil {
-		return nil, err
-	}
 	query := `SELECT id, email_address, password_hash, email_verified, email_verification_token, 
 	          email_verification_expires_at, password_reset_token, password_reset_expires_at, 
 	          last_password_change_at, mfa_enabled, mfa_secret, mfa_backup_codes, mfa_setup_at, 
 	          mfa_verified_at, last_login_at, failed_login_attempts, account_locked_until,
 	          first_name, last_name, phone, user_role, user_type, status, created_at, updated_at 
 	          FROM "user" WHERE id = $1`
-	row := r.db.QueryRow(query, userIDInt)
+	row := r.db.QueryRow(query, id)
 
 	user := &User{}
-	var userIDInt64 int
-	err = row.Scan(
-		&userIDInt64, &user.Email, &user.PasswordHash,
+	err := row.Scan(
+		&user.ID, &user.Email, &user.PasswordHash,
 		&user.EmailVerified, &user.EmailVerificationToken, &user.EmailVerificationExpiresAt,
 		&user.PasswordResetToken, &user.PasswordResetExpiresAt, &user.LastPasswordChangeAt,
 		&user.MFAEnabled, &user.MFASecret, &user.MFABackupCodes, &user.MFASetupAt,
@@ -76,7 +69,6 @@ func (r *UserRepository) GetByID(id string) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
-	user.ID = strconv.Itoa(userIDInt64)
 	return user, nil
 }
 
@@ -92,9 +84,8 @@ func (r *UserRepository) GetByEmail(email string) (*User, error) {
 	row := r.db.QueryRow(query, email)
 
 	user := &User{}
-	var userIDInt int
 	err := row.Scan(
-		&userIDInt, &user.Email, &user.PasswordHash,
+		&user.ID, &user.Email, &user.PasswordHash,
 		&user.EmailVerified, &user.EmailVerificationToken, &user.EmailVerificationExpiresAt,
 		&user.PasswordResetToken, &user.PasswordResetExpiresAt, &user.LastPasswordChangeAt,
 		&user.MFAEnabled, &user.MFASecret, &user.MFABackupCodes, &user.MFASetupAt,
@@ -108,7 +99,6 @@ func (r *UserRepository) GetByEmail(email string) (*User, error) {
 		}
 		return nil, err
 	}
-	user.ID = strconv.Itoa(userIDInt)
 	return user, nil
 }
 
@@ -139,9 +129,8 @@ func (r *UserRepository) Create(email, passwordHash, firstName, lastName, role s
 	row := r.db.QueryRow(query, email, passwordHash, firstName, lastName, mappedRole)
 
 	user := &User{}
-	var userIDInt int
 	err := row.Scan(
-		&userIDInt, &user.Email, &user.PasswordHash,
+		&user.ID, &user.Email, &user.PasswordHash,
 		&user.EmailVerified, &user.EmailVerificationToken, &user.EmailVerificationExpiresAt,
 		&user.PasswordResetToken, &user.PasswordResetExpiresAt, &user.LastPasswordChangeAt,
 		&user.MFAEnabled, &user.MFASecret, &user.MFABackupCodes, &user.MFASetupAt,
@@ -152,6 +141,5 @@ func (r *UserRepository) Create(email, passwordHash, firstName, lastName, role s
 	if err != nil {
 		return nil, err
 	}
-	user.ID = strconv.Itoa(userIDInt)
 	return user, nil
 }
