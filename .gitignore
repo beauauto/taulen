@@ -43,9 +43,12 @@ yarn-error.log*
 *.sqlite
 *.sqlite3
 
-# SQL files - only database-schema.sql (gold standard) should be tracked
+# SQL files - exclude all except:
+# - database-schema.sql (gold standard schema)
+# - backend/internal/sql/queries/*.sql (required for sqlc code generation)
 *.sql
 !database-schema.sql
+!backend/internal/sql/queries/*.sql
 
 # OS
 Thumbs.db
