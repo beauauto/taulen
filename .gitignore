@@ -45,9 +45,11 @@ yarn-error.log*
 
 # SQL files - exclude all except:
 # - database-schema.sql (gold standard schema)
+# - backend/internal/sql/schema.sql (required for sqlc.yaml)
 # - backend/internal/sql/queries/*.sql (required for sqlc code generation)
 *.sql
 !database-schema.sql
+!backend/internal/sql/schema.sql
 !backend/internal/sql/queries/*.sql
 
 # OS
