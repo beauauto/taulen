@@ -43,6 +43,10 @@ yarn-error.log*
 *.sqlite
 *.sqlite3
 
+# SQL files - only database-schema.sql (gold standard) should be tracked
+*.sql
+!database-schema.sql
+
 # OS
 Thumbs.db
 .DS_Store
