@@ -64,8 +64,11 @@ This will start:
 ### 5. Apply Database Schema
 
 ```bash
-# Using docker exec
-docker exec -i taulen-postgres psql -U taulen -d taulen_db < internal/sql/schema.sql
+# Using docker exec (from project root)
+docker exec -i taulen-postgres psql -U taulen -d taulen_db < database-schema.sql
+
+# Or from backend directory
+docker exec -i taulen-postgres psql -U taulen -d taulen_db < ../database-schema.sql
 ```
 
 ### 6. Generate sqlc Code
