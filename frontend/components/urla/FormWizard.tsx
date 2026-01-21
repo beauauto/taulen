@@ -55,7 +55,7 @@ const FORM_SECTIONS = [
 ]
 
 interface FormWizardProps {
-  applicationId?: number
+  applicationId?: string
   initialData?: Partial<URLAFormData>
 }
 
@@ -253,7 +253,7 @@ export function FormWizard({ applicationId, initialData }: FormWizardProps) {
         if (!formData.borrower.lastName) newErrors.lastName = 'Last name is required'
         if (!formData.borrower.dateOfBirth) newErrors.dateOfBirth = 'Date of birth is required'
         if (!formData.borrower.ssn) newErrors.ssn = 'SSN is required'
-        if (!formData.borrower.maritalStatus) newErrors.maritalStatus = 'Marital status is required'
+//        if (!formData.borrower.maritalStatus) newErrors.maritalStatus = 'Marital status is required'
         if (!formData.borrower.citizenshipStatus) newErrors.citizenshipStatus = 'Citizenship status is required'
         break
       case 'property':

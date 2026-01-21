@@ -53,7 +53,7 @@ export default function GettingToKnowYouIntroPage() {
     if (appId) {
       try {
         const { urlaApi } = await import('@/lib/api')
-        await urlaApi.saveApplication(parseInt(appId, 10), {
+        await urlaApi.saveApplication(appId, {
           nextFormStep: 'loan',
         })
       } catch (error) {
@@ -68,7 +68,10 @@ export default function GettingToKnowYouIntroPage() {
 
   const handleBack = () => {
     // Go back to the previous form in the 1003 flow: Getting Started Summary (review)
-    const appId = sessionStorage.getItem('applicationId')
+    const urlParams = new URLSearchParams(window.location.search)
+    const appIdFromUrl = urlParams.get('applicationId')
+    const appIdFromStorage = sessionStorage.getItem('applicationId')
+    const appId = appIdFromUrl || appIdFromStorage
     
     if (appId) {
       router.push(`/application/review?applicationId=${appId}`)

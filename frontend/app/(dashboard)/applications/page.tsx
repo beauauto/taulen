@@ -21,7 +21,7 @@ const Progress = ({ value, className }: { value: number; className?: string }) =
 )
 
 interface Application {
-  id: number
+  id: string
   loanType: string
   loanPurpose: string
   loanAmount: number
@@ -61,7 +61,32 @@ export default function ApplicationsPage() {
     try {
       setLoading(true)
       const response = await urlaApi.getMyApplications()
-      const apps = response.data.applications || []
+      console.log('getMyApplications response:', response)
+      console.log('response.data:', response.data)
+      console.log('response.data type:', typeof response.data)
+      
+      // Handle different response formats
+      let apps: Application[] = []
+      if (response && response.data) {
+        if (Array.isArray(response.data)) {
+          apps = response.data
+          console.log('Response data is array, length:', apps.length)
+        } else if (response.data.applications) {
+          apps = response.data.applications
+          console.log('Response data has applications property, length:', apps.length)
+        } else if (response.data.id) {
+          // Single application object
+          apps = [response.data]
+          console.log('Found single application object')
+        } else {
+          console.warn('Unexpected response format:', response.data)
+        }
+      } else {
+        console.warn('No data in response:', response)
+      }
+      
+      console.log('Applications found:', apps.length)
+      console.log('Applications:', apps)
       
       // Sort by lastUpdatedDate (most recent first)
       apps.sort((a: Application, b: Application) => {
@@ -71,8 +96,23 @@ export default function ApplicationsPage() {
       })
       
       setApplications(apps)
-    } catch (error) {
+      
+      // If applications found, redirect to most recent one
+      // Only redirect if we're not already on the applications page (avoid redirect loops)
+      if (apps.length > 0 && !window.location.pathname.includes('/applications/')) {
+        const mostRecentApp = apps[0]
+        console.log('Found applications, redirecting to most recent:', mostRecentApp.id)
+        router.push(`/applications/${mostRecentApp.id}`)
+      } else if (apps.length === 0) {
+        console.log('No applications found for borrower')
+      }
+    } catch (error: any) {
       console.error('Failed to fetch applications:', error)
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      })
     } finally {
       setLoading(false)
     }

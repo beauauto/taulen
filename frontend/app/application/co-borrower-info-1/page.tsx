@@ -8,9 +8,10 @@ import { Label } from '@/components/ui/label'
 import { Form1003Layout, FormSection } from '@/components/urla/Form1003Layout'
 import { Select } from '@/components/ui/select'
 import { BorrowerBasicInfoForm, BorrowerBasicInfoFormData } from '@/components/urla/BorrowerBasicInfoForm'
-import { parsePhoneNumber } from '@/components/ui/PhoneInput'
+import { parsePhoneNumber, formatPhoneNumber } from '@/components/ui/PhoneInput'
 import { urlaApi } from '@/lib/api'
 import { useFormChanges } from '@/hooks/useFormChanges'
+import { useApplicationState } from '@/hooks/useApplicationState'
 
 export default function CoBorrowerInfoPage1() {
   const router = useRouter()
@@ -36,18 +37,26 @@ export default function CoBorrowerInfoPage1() {
   // Track form changes to avoid unnecessary saves
   const { hasChanges, resetInitialData } = useFormChanges(formData)
   
+  // Application state management
+  const appState = useApplicationState()
+  
   // Ref for first input field to auto-focus
   const firstNameInputRef = useRef<HTMLInputElement>(null)
 
-  // Load existing co-borrower data if applicationId is provided
+  // Always load co-borrower-info-1 specific fields from database when form is accessed
+  // This ensures data is fresh whether accessed via forward or back navigation
   useEffect(() => {
     const loadExistingData = async () => {
-      // Check for applicationId in URL params or sessionStorage
+      // Get deal ID from URL params or application state
       const applicationIdParam = searchParams?.get('applicationId')
-      const applicationIdFromStorage = sessionStorage.getItem('applicationId')
-      const applicationId = applicationIdParam || applicationIdFromStorage
+      const applicationId = applicationIdParam || appState.dealId
 
-      // Only try to load from API if user is authenticated
+      // Sync deal ID to state if from URL
+      if (applicationIdParam && !appState.dealId) {
+        appState.setDealId(applicationIdParam)
+      }
+
+      // Only try to load from API if user is authenticated and application exists
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
       
       // If no applicationId or no token, show form immediately (new co-borrower)
@@ -56,12 +65,16 @@ export default function CoBorrowerInfoPage1() {
         return
       }
       
-      // Try to load existing data for authenticated users
+      // Always load co-borrower-info-1 fields from database
       try {
         const appResponse = await urlaApi.getApplication(applicationId)
         const appData = appResponse.data
         
-        if (appData?.coBorrower) {
+        // Sync application state from API response
+        appState.syncFromApi(appData)
+        
+        // Load co-borrower-info-1 specific fields only (firstName, lastName, email, phone, phoneType)
+        if (appData?.coBorrower || appData?.coBorrowerId) {
           const coBorrowerData = appData.coBorrower as any
           const loadedData = {
             firstName: coBorrowerData?.firstName || '',
@@ -70,8 +83,9 @@ export default function CoBorrowerInfoPage1() {
             suffix: '',
             email: coBorrowerData?.email || '',
             confirmEmail: coBorrowerData?.email || '',
-            phone: coBorrowerData?.phone || '',
+            phone: coBorrowerData?.phone ? formatPhoneNumber(coBorrowerData.phone) : '',
             phoneType: coBorrowerData?.phoneType || 'MOBILE',
+            // These fields belong to co-borrower-info-2, not co-borrower-info-1
             maritalStatus: '',
             isVeteran: false,
             currentAddress: '',
@@ -96,7 +110,7 @@ export default function CoBorrowerInfoPage1() {
     }
 
     loadExistingData()
-  }, [searchParams])
+  }, [searchParams, appState.dealId])
   
   // Auto-focus first field when form is loaded
   useEffect(() => {
@@ -186,7 +200,7 @@ export default function CoBorrowerInfoPage1() {
       return
     }
 
-    const applicationId = searchParams?.get('applicationId') || sessionStorage.getItem('applicationId')
+    const applicationId = searchParams?.get('applicationId') || appState.dealId
     
     if (!applicationId) {
       setErrors({ submit: 'Application ID not found. Please start over.' })
@@ -211,7 +225,15 @@ export default function CoBorrowerInfoPage1() {
           nextFormStep: 'co-borrower-info-2',
         }
 
-        await urlaApi.saveApplication(applicationId, saveData)
+        const response = await urlaApi.saveApplication(applicationId, saveData)
+        
+        // Sync application state from API response (may include co-borrower ID)
+        if (response.data) {
+          appState.syncFromApi(response.data)
+        }
+        
+        // Update form step in state
+        appState.setCurrentFormStep('co-borrower-info-2')
         
         // Reset initial data after successful save
         resetInitialData(formData)
@@ -239,7 +261,7 @@ export default function CoBorrowerInfoPage1() {
 
   const handleBack = () => {
     // Go back to co-borrower-question
-    const applicationId = searchParams?.get('applicationId') || sessionStorage.getItem('applicationId')
+    const applicationId = searchParams?.get('applicationId') || appState.dealId
     if (applicationId) {
       router.push(`/application/co-borrower-question?applicationId=${applicationId}`)
     } else {

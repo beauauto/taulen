@@ -314,120 +314,23 @@ func (s *BorrowerService) SaveBorrowerData(dealID string, borrowerData map[strin
 
 	borrowerID := deal.PrimaryBorrowerID.String
 
-	// Update borrower information
-	var firstName, lastName *string
-	var middleName, suffix, ssn, maritalStatus, citizenshipStatus, email *string
-	var dateOfBirth *time.Time
-	var dependentsCount *int64
-	var phone, phoneType *string
+	// Extract borrower-info-2 fields only
+	// Note: firstName, lastName, email, phone, phoneType, middleName, suffix, ssn, dateOfBirth, 
+	// dependentsCount, citizenshipStatus belong to borrower-info-1 and should NOT be updated here
+	var maritalStatus *string
 
-	if val, ok := borrowerData["firstName"].(string); ok && val != "" {
-		firstName = &val
-	}
-	if val, ok := borrowerData["lastName"].(string); ok && val != "" {
-		lastName = &val
-	}
-	if val, ok := borrowerData["middleName"].(string); ok && val != "" {
-		middleName = &val
-	}
-	if val, ok := borrowerData["suffix"].(string); ok && val != "" {
-		suffix = &val
-	}
-	if val, ok := borrowerData["email"].(string); ok && val != "" {
-		email = &val
-	}
-	if val, ok := borrowerData["ssn"].(string); ok && val != "" {
-		ssn = &val
-	}
 	if val, ok := borrowerData["maritalStatus"].(string); ok && val != "" {
 		// Normalize marital status to match database constraint (capitalized: "Married", "Separated", "Unmarried")
 		normalized := normalizeMaritalStatus(val)
 		maritalStatus = &normalized
 	}
-	if val, ok := borrowerData["citizenshipStatus"].(string); ok && val != "" {
-		citizenshipStatus = &val
-	}
-	if val, ok := borrowerData["dateOfBirth"].(string); ok && val != "" {
-		if dob, err := time.Parse("2006-01-02", val); err == nil {
-			dateOfBirth = &dob
-		}
-	}
-	if val, ok := borrowerData["dependentsCount"].(float64); ok {
-		count := int64(val)
-		dependentsCount = &count
-	}
-	if val, ok := borrowerData["phone"].(string); ok && val != "" {
-		phone = &val
-		// Default to MOBILE if phoneType not specified
-		if val, ok := borrowerData["phoneType"].(string); ok && val != "" {
-			phoneType = &val
-		} else {
-			defaultType := "MOBILE"
-			phoneType = &defaultType
-		}
-	}
 
-	// Update email if provided
-	if email != nil {
-		err = s.borrowerRepo.UpdateEmail(borrowerID, *email)
+	// Update marital status if provided
+	if maritalStatus != nil {
+		err = s.borrowerRepo.UpdateBorrowerDetails(borrowerID, nil, nil, maritalStatus, nil, nil)
 		if err != nil {
-			return errors.New("failed to update email: " + err.Error())
+			return errors.New("failed to update marital status: " + err.Error())
 		}
-	}
-
-	// Update borrower details (middleName, suffix, maritalStatus, phone) if any are provided
-	// Note: maritalStatus can be updated alone, so we check for it separately
-	if maritalStatus != nil || middleName != nil || suffix != nil || phone != nil {
-		err = s.borrowerRepo.UpdateBorrowerDetails(borrowerID, middleName, suffix, maritalStatus, phone, phoneType)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Update first/last name separately if needed
-	if firstName != nil || lastName != nil {
-		// Get current borrower to preserve existing values
-		borrower, err := s.borrowerRepo.GetByID(borrowerID)
-		if err == nil {
-			first := borrower.FirstName
-			last := borrower.LastName
-			if firstName != nil {
-				first = *firstName
-			}
-			if lastName != nil {
-				last = *lastName
-			}
-			err = s.borrowerRepo.UpdateName(borrowerID, first, last)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	// Update date of birth
-	if dateOfBirth != nil {
-		err = s.borrowerRepo.UpdateBorrowerInfo(borrowerID, dateOfBirth)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Update SSN (taxpayer identifier)
-	if ssn != nil {
-		// Update taxpayer identifier - this would need a new repository method
-		// For now, we'll skip this as it requires additional implementation
-	}
-
-	// Update dependents count
-	if dependentsCount != nil {
-		// This would need a repository method to update dependent_count
-		// For now, we'll skip this
-	}
-
-	// Update citizenship status
-	if citizenshipStatus != nil {
-		// This would need a repository method to update citizenship_residency_type
-		// For now, we'll skip this
 	}
 
 	// Save address to residence table

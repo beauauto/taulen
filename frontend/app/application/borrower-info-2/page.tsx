@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,9 +13,11 @@ import { MapPin } from 'lucide-react'
 import { authUtils } from '@/lib/auth'
 import { cookieUtils } from '@/lib/cookies'
 import { useFormChanges } from '@/hooks/useFormChanges'
+import { useApplicationState } from '@/hooks/useApplicationState'
 
 export default function BorrowerInfoPage2() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [formData, setFormData] = useState({
     maritalStatus: '',
     isVeteran: false,
@@ -30,6 +32,9 @@ export default function BorrowerInfoPage2() {
   
   // Track form changes to avoid unnecessary saves
   const { hasChanges, resetInitialData } = useFormChanges(formData)
+  
+  // Application state management
+  const appState = useApplicationState()
   
   // Ref for first input field to auto-focus
   const maritalStatusSelectRef = useRef<HTMLSelectElement>(null)
@@ -73,12 +78,10 @@ export default function BorrowerInfoPage2() {
   ]
 
   useEffect(() => {
-    // Check if borrower was already created (applicationId exists)
-    // Try to get from URL params first (when redirected from /applications/[id])
+    // Get deal ID from URL params or application state
     const urlParams = new URLSearchParams(window.location.search)
     const applicationIdFromUrl = urlParams.get('applicationId')
-    const applicationIdFromStorage = sessionStorage.getItem('applicationId')
-    const applicationId = applicationIdFromUrl || applicationIdFromStorage
+    const applicationId = applicationIdFromUrl || appState.dealId
     
     if (!applicationId) {
       // If no applicationId, redirect back to first form
@@ -86,10 +89,13 @@ export default function BorrowerInfoPage2() {
       return
     }
 
-    // Store in sessionStorage for consistency
-    if (applicationIdFromUrl && !applicationIdFromStorage) {
-      sessionStorage.setItem('applicationId', applicationId)
+    // Sync deal ID to state if from URL
+    if (applicationIdFromUrl && !appState.dealId) {
+      appState.setDealId(applicationIdFromUrl)
     }
+    
+    // Always load borrower-info-2 fields from database when form is accessed
+    // This ensures data is fresh whether accessed via forward or back navigation
 
     // Verify token exists - borrower should be authenticated by this point
     // Try multiple methods to get the token
@@ -142,6 +148,9 @@ export default function BorrowerInfoPage2() {
         const appResponse = await urlaApi.getApplication(applicationId)
         const appData = appResponse.data
         console.log('Application data loaded:', JSON.stringify(appData, null, 2))
+        
+        // Sync application state from API response
+        appState.syncFromApi(appData)
         
         if (appData?.borrower) {
           const borrowerData = appData.borrower as any
@@ -250,10 +259,10 @@ export default function BorrowerInfoPage2() {
       }
     }
 
-    // Always try to load data if we have an applicationId
-    // The API call will fail gracefully if there's no token
+    // Always load borrower-info-2 fields from database when form is accessed
+    // This ensures data is fresh whether accessed via forward or back navigation
     loadExistingData()
-  }, [router])
+  }, [searchParams, appState.dealId])
 
   // Debug: Log when formData.maritalStatus changes
   useEffect(() => {
@@ -398,6 +407,11 @@ export default function BorrowerInfoPage2() {
         const saveResponse = await urlaApi.saveApplication(applicationId, saveData)
         console.log('Borrower data saved successfully:', saveResponse)
         
+        // Sync application state from API response
+        if (saveResponse.data) {
+          appState.syncFromApi(saveResponse.data)
+        }
+        
         // Reset initial data after successful save
         resetInitialData(formData)
       }
@@ -411,6 +425,9 @@ export default function BorrowerInfoPage2() {
           true // Mark as complete
         )
         console.log('Progress updated successfully:', progressResponse)
+        
+        // Update progress in state
+        appState.updateBorrowerProgress('Section1a_PersonalInfo', true)
       } catch (progressError: any) {
         console.error('Failed to update progress:', progressError)
         // Log the error but don't block navigation - data is saved
@@ -460,13 +477,10 @@ export default function BorrowerInfoPage2() {
 
   const handleBack = () => {
     // Always go back to the previous form in the 1003 flow: borrower-info-1
-    const urlParams = new URLSearchParams(window.location.search)
-    const applicationIdFromUrl = urlParams.get('applicationId')
-    const applicationIdFromStorage = sessionStorage.getItem('applicationId')
-    const appId = applicationIdFromUrl || applicationIdFromStorage
+    const applicationId = searchParams?.get('applicationId') || appState.dealId
     
-    if (appId) {
-      router.push(`/application/borrower-info-1?applicationId=${appId}`)
+    if (applicationId) {
+      router.push(`/application/borrower-info-1?applicationId=${applicationId}`)
     } else {
       router.push('/application/borrower-info-1')
     }

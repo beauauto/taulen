@@ -14,7 +14,7 @@ function ApplicationForm() {
   useEffect(() => {
     // Determine the next step in the original flow chain and redirect
     const determineNextStep = async () => {
-      if (!applicationId || isNaN(applicationId)) {
+      if (!applicationId) {
         setIsLoading(false)
         return
       }
@@ -116,7 +116,7 @@ function ApplicationForm() {
     determineNextStep()
   }, [applicationId, router])
 
-  if (!applicationId || isNaN(applicationId)) {
+  if (!applicationId) {
     return (
       <Form1003Layout
         sections={[]}

@@ -9,7 +9,7 @@ import { urlaApi } from '@/lib/api'
 import { Edit2, Home, User } from 'lucide-react'
 
 interface GettingStartedSummaryProps {
-  applicationId?: number
+  applicationId?: string
   onEditBorrower?: () => void
   onContinue?: () => void
   onBack?: () => void
@@ -157,7 +157,7 @@ export function GettingStartedSummary({
         // This will override sessionStorage data if available
         const appIdToLoad = applicationId || (() => {
           const storedAppId = sessionStorage.getItem('applicationId')
-          return storedAppId ? parseInt(storedAppId, 10) : null
+          return storedAppId
         })()
 
         if (appIdToLoad) {
@@ -236,11 +236,18 @@ export function GettingStartedSummary({
     if (onEditBorrower) {
       onEditBorrower()
     } else {
-      // Default: go to borrower-info-1 (unified route)
+      // Navigate to comprehensive borrower edit page with all URLA 1003 Section 1 fields
       const appId = applicationId || sessionStorage.getItem('applicationId')
-      const url = appId ? `/application/borrower-info-1?applicationId=${appId}` : '/application/borrower-info-1'
+      const url = appId ? `/application/borrower-edit?applicationId=${appId}` : '/application/borrower-edit'
       router.push(url)
     }
+  }
+
+  const handleEditCoBorrower = () => {
+    // Navigate to comprehensive co-borrower edit page with all URLA 1003 Section 1 fields
+    const appId = applicationId || sessionStorage.getItem('applicationId')
+    const url = appId ? `/application/co-borrower-edit?applicationId=${appId}` : '/application/co-borrower-edit'
+    router.push(url)
   }
 
   const handleContinue = async () => {
@@ -256,7 +263,7 @@ export function GettingStartedSummary({
         try {
           const { urlaApi } = await import('@/lib/api')
           await urlaApi.saveApplication(
-            typeof appId === 'number' ? appId : parseInt(appId, 10),
+            appId,
             {
               nextFormStep: 'getting-to-know-you-intro',
             }
@@ -286,7 +293,7 @@ export function GettingStartedSummary({
     
     if (appId) {
       try {
-        const appResponse = await urlaApi.getApplication(parseInt(appId.toString(), 10))
+        const appResponse = await urlaApi.getApplication(appId)
         const appData = appResponse.data
         
         // If co-borrower exists, go back to co-borrower-info-2
@@ -459,6 +466,17 @@ export function GettingStartedSummary({
                     </div>
                   </div>
                 </div>
+                {hasCoBorrower && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleEditCoBorrower}
+                    className="ml-4 text-amber-600 border-amber-600 hover:bg-amber-50"
+                  >
+                    <Edit2 className="w-4 h-4 mr-1" />
+                    Edit
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

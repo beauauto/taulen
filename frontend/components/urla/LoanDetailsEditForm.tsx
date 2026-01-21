@@ -10,7 +10,7 @@ import { Form1003Layout, FormSection } from '@/components/urla/Form1003Layout'
 import { urlaApi } from '@/lib/api'
 
 interface LoanDetailsEditFormProps {
-  applicationId?: number
+  applicationId?: string
   onSave: () => void
   onCancel: () => void
   loanType: 'Purchase' | 'Refinance'

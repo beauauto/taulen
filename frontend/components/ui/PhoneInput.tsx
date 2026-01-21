@@ -39,15 +39,22 @@ export function PhoneInput({
   autoComplete = 'tel',
 }: PhoneInputProps) {
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!showPhoneType) {
-      // Format phone number as user types: (XXX) XXX-XXXX
-      const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 10)
-      const formatted = digitsOnly.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')
-      onChange(formatted || digitsOnly)
+    const inputValue = e.target.value
+    const digitsOnly = inputValue.replace(/\D/g, '').slice(0, 10)
+    
+    // Format phone number as user types: (XXX) XXX-XXXX
+    let formatted = ''
+    if (digitsOnly.length === 0) {
+      formatted = ''
+    } else if (digitsOnly.length <= 3) {
+      formatted = `(${digitsOnly}`
+    } else if (digitsOnly.length <= 6) {
+      formatted = `(${digitsOnly.slice(0, 3)}) ${digitsOnly.slice(3)}`
     } else {
-      // No formatting when phone type is shown (user can enter any format)
-      onChange(e.target.value)
+      formatted = `(${digitsOnly.slice(0, 3)}) ${digitsOnly.slice(3, 6)}-${digitsOnly.slice(6)}`
     }
+    
+    onChange(formatted)
   }
 
   return (
@@ -65,7 +72,7 @@ export function PhoneInput({
           value={value}
           onChange={handlePhoneChange}
           className={`mt-1 ${error ? 'border-red-500' : ''} ${className}`}
-          maxLength={showPhoneType ? undefined : 14}
+          maxLength={14}
           autoComplete={autoComplete}
         />
         {error && (

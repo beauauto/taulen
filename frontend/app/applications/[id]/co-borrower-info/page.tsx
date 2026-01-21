@@ -134,9 +134,9 @@ export default function CoBorrowerInfoPage() {
     if (!formData.phoneType) {
       newErrors.phoneType = 'Phone type is required'
     }
-    if (!formData.maritalStatus) {
+/*     if (!formData.maritalStatus) {
       newErrors.maritalStatus = 'Co-applicant Marital Status is required'
-    }
+    } */
     if (!formData.liveTogether && !formData.currentAddress.trim()) {
       newErrors.currentAddress = 'Current Address is required when not living together'
     }

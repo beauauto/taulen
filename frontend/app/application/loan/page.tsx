@@ -8,10 +8,12 @@ import { Label } from '@/components/ui/label'
 import { Form1003Layout, FormSection } from '@/components/urla/Form1003Layout'
 import { Switch } from '@/components/ui/switch'
 import { urlaApi } from '@/lib/api'
+import { useApplicationState } from '@/hooks/useApplicationState'
 
 export default function LoanPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const appState = useApplicationState()
   const [loanPurpose, setLoanPurpose] = useState<string>('Purchase')
   const [isLoading, setIsLoading] = useState(true)
   const [purchaseFormData, setPurchaseFormData] = useState({
@@ -29,69 +31,64 @@ export default function LoanPage() {
 
   useEffect(() => {
     const loadLoanData = async () => {
-      // Check for applicationId in URL params or sessionStorage
+      // Get deal ID from URL params or application state
       const applicationIdParam = searchParams?.get('applicationId')
-      const applicationIdFromStorage = sessionStorage.getItem('applicationId')
-      const applicationId = applicationIdParam || applicationIdFromStorage
+      const applicationId = applicationIdParam || appState.dealId
+      
+      // Sync deal ID to state if from URL
+      if (applicationIdParam && !appState.dealId) {
+        appState.setDealId(applicationIdParam)
+      }
       
       // Check if user is authenticated
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
       
       if (applicationId && token) {
         try {
-          // Load application data from database
+          // Always load loan data from database
           const appResponse = await urlaApi.getApplication(applicationId)
           const appData = appResponse.data
           
-          // If application exists, load loanPurpose from database
+          // Sync application state from API response
+          appState.syncFromApi(appData)
+          
+          // Load loanPurpose from database
           if (appData?.loanPurpose) {
             setLoanPurpose(appData.loanPurpose)
             sessionStorage.setItem('loanPurpose', appData.loanPurpose)
-            
-            // Load existing loan data if available
-            if (appData.loanAmount) {
-              if (appData.loanPurpose === 'Refinance' || appData.loanPurpose === 'refinance') {
-                // Load refinance data from sessionStorage or API
-                const refinanceDataStr = sessionStorage.getItem('refinanceData')
-                if (refinanceDataStr) {
-                  try {
-                    const refinanceData = JSON.parse(refinanceDataStr)
-                    setRefinanceFormData({
-                      propertyAddress: refinanceData.propertyAddress || '',
-                      outstandingBalance: refinanceData.outstandingBalance ? 
-                        parseInt(refinanceData.outstandingBalance, 10).toLocaleString('en-US') : '',
-                    })
-                  } catch (e) {
-                    console.error('Failed to parse refinance data:', e)
-                  }
-                }
-              } else {
-                // Load purchase data from sessionStorage
-                const loanDataStr = sessionStorage.getItem('loanWantedData')
-                if (loanDataStr) {
-                  try {
-                    const loanData = JSON.parse(loanDataStr)
-                    setPurchaseFormData(prev => ({
-                      ...prev,
-                      purchasePrice: loanData.purchasePrice ? 
-                        parseInt(loanData.purchasePrice, 10).toLocaleString('en-US') : '',
-                      downPayment: loanData.downPayment ? 
-                        parseInt(loanData.downPayment, 10).toLocaleString('en-US') : '',
-                      loanAmount: loanData.loanAmount ? 
-                        parseInt(loanData.loanAmount, 10).toLocaleString('en-US') : '',
-                      isApplyingForOtherLoans: loanData.isApplyingForOtherLoans || false,
-                      isDownPaymentPartGift: loanData.isDownPaymentPartGift || false,
-                    }))
-                  } catch (e) {
-                    console.error('Failed to parse loan data:', e)
-                  }
-                }
-              }
+          }
+          
+          // Load loan-specific fields from database
+          // These fields belong to the loan form
+          if (appData.loanAmount) {
+            if (appData.loanPurpose === 'Refinance' || appData.loanPurpose === 'refinance') {
+              // Load refinance fields from database
+              // Note: propertyAddress and outstandingBalance should come from loan data
+              // For now, we'll check if they're in the loan object
+              const loanData = appData.loan || {}
+              setRefinanceFormData({
+                propertyAddress: loanData.propertyAddress || appData.propertyAddress || '',
+                outstandingBalance: loanData.outstandingBalance || appData.outstandingBalance
+                  ? parseInt(String(loanData.outstandingBalance || appData.outstandingBalance), 10).toLocaleString('en-US')
+                  : '',
+              })
+            } else {
+              // Load purchase fields from database
+              const loanData = appData.loan || {}
+              setPurchaseFormData({
+                purchasePrice: loanData.purchasePrice || appData.purchasePrice
+                  ? parseInt(String(loanData.purchasePrice || appData.purchasePrice), 10).toLocaleString('en-US')
+                  : '',
+                downPayment: loanData.downPayment || appData.downPayment
+                  ? parseInt(String(loanData.downPayment || appData.downPayment), 10).toLocaleString('en-US')
+                  : '',
+                loanAmount: loanData.loanAmount || appData.loanAmount
+                  ? parseInt(String(loanData.loanAmount || appData.loanAmount), 10).toLocaleString('en-US')
+                  : '',
+                isApplyingForOtherLoans: loanData.isApplyingForOtherLoans || appData.isApplyingForOtherLoans || false,
+                isDownPaymentPartGift: loanData.isDownPaymentPartGift || appData.isDownPaymentPartGift || false,
+              })
             }
-          } else {
-            // No application yet, get loan purpose from sessionStorage
-            const purpose = sessionStorage.getItem('loanPurpose') || 'Purchase'
-            setLoanPurpose(purpose)
           }
         } catch (error: any) {
           // If 401 or application not found, allow user to proceed (new application)
@@ -103,7 +100,7 @@ export default function LoanPage() {
           }
         }
       } else {
-        // No applicationId, get loan purpose from sessionStorage
+        // No applicationId yet (before borrower creation), get loan purpose from sessionStorage
         const purpose = sessionStorage.getItem('loanPurpose') || 'Purchase'
         setLoanPurpose(purpose)
       }
@@ -112,7 +109,7 @@ export default function LoanPage() {
     }
     
     loadLoanData()
-  }, [searchParams])
+  }, [searchParams, appState.dealId])
 
   const sections: FormSection[] = [
     {
@@ -305,11 +302,12 @@ export default function LoanPage() {
   }
 
   const handleBack = () => {
+    // Go back to the previous form in the 1003 flow: getting-to-know-you-intro
     const appId = searchParams?.get('applicationId') || sessionStorage.getItem('applicationId')
     if (appId) {
       router.push(`/application/getting-to-know-you-intro?applicationId=${appId}`)
     } else {
-      router.push('/getting-started')
+      router.push('/application/getting-to-know-you-intro')
     }
   }
 

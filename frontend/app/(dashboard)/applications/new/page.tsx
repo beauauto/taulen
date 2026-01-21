@@ -18,7 +18,7 @@ function NewApplicationForm() {
   const [loanPurpose, setLoanPurpose] = useState('')
   const [loanAmount, setLoanAmount] = useState('')
   const [isCreating, setIsCreating] = useState(false)
-  const [applicationId, setApplicationId] = useState<number>()
+  const [applicationId, setApplicationId] = useState<string>()
   const [error, setError] = useState('')
 
   useEffect(() => {

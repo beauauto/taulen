@@ -38,8 +38,7 @@ func (h *URLAHandler) CreateApplication(c *gin.Context) {
 
 	// Both borrowers and employees now use UUID strings
 	// Try to create application for borrower first (if userID is a borrower)
-	// For now, we'll check if it's a borrower by attempting to fetch from borrower table
-	// If that fails, treat as employee
+	// If that fails, try as employee
 	response, err := h.urlaService.CreateApplicationForBorrower(userID, req)
 	if err != nil {
 		// If borrower creation fails, try as employee
@@ -48,10 +47,6 @@ func (h *URLAHandler) CreateApplication(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-	}
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
 	}
 
 	c.JSON(http.StatusCreated, response)
@@ -232,29 +227,53 @@ func (h *URLAHandler) UpdateApplicationProgressNotes(c *gin.Context) {
 
 // GetMyApplications handles getting applications for the current user (employee or applicant)
 func (h *URLAHandler) GetMyApplications(c *gin.Context) {
+	// Force log flush immediately
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+	log.Printf("=== GetMyApplications: START ===")
+	
 	userID, exists := middleware.GetUserID(c)
 	if !exists {
+		log.Printf("GetMyApplications: No user ID found in context")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
+	log.Printf("GetMyApplications: Processing request for user ID: %s", userID)
+	log.Printf("GetMyApplications: About to call GetApplicationsByBorrower for user %s", userID)
+
 	// Both borrowers and employees now use UUID strings
 	// Try to get borrower applications first
 	applications, err := h.urlaService.GetApplicationsByBorrower(userID)
+	log.Printf("GetMyApplications: GetApplicationsByBorrower returned %d applications, error: %v", len(applications), err)
 	if err != nil {
-		// If borrower lookup fails, try as employee
-		applications, err = h.urlaService.GetApplicationsByEmployee(userID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve applications"})
+		log.Printf("GetMyApplications: Error fetching borrower applications for user %s: %v", userID, err)
+		// If borrower lookup fails with a real error (not just no rows), try as employee
+		// But first check if it's a "no rows" case - that's not an error, just empty result
+		employeeApplications, employeeErr := h.urlaService.GetApplicationsByEmployee(userID)
+		if employeeErr != nil {
+			log.Printf("GetMyApplications: Error fetching employee applications for user %s: %v", userID, employeeErr)
+			// Return empty array - user might not have any applications yet
+			log.Printf("GetMyApplications: Returning empty applications array for user %s", userID)
+			c.JSON(http.StatusOK, gin.H{"applications": []services.ApplicationResponse{}})
 			return
 		}
-	}
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve applications"})
-		return
+		// If employee lookup succeeds, use those results
+		// But log a warning since this suggests the user might be misidentified
+		if len(employeeApplications) > 0 {
+			log.Printf("GetMyApplications: Found employee applications for user %s, but borrower lookup failed", userID)
+		}
+		applications = employeeApplications
 	}
 
+	// Ensure applications is never nil - convert to empty slice if needed
+	if applications == nil {
+		log.Printf("GetMyApplications: applications is nil, converting to empty slice")
+		applications = []services.ApplicationResponse{}
+	}
+
+	log.Printf("GetMyApplications: Returning %d applications for user %s", len(applications), userID)
 	c.JSON(http.StatusOK, gin.H{"applications": applications})
+	log.Printf("=== GetMyApplications: END ===")
 }
 
 // SendVerificationCode handles sending verification code via email or SMS

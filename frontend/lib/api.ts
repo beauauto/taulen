@@ -27,11 +27,17 @@ apiClient.interceptors.request.use(
     
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
-      console.log('API Request:', config.method?.toUpperCase(), config.url, 'with Authorization header (token length:', token.length, ')')
+      // Only log token presence for non-auth endpoints to reduce noise
+      if (!config.url?.includes('/auth/')) {
+        console.log('API Request:', config.method?.toUpperCase(), config.url, 'with Authorization header (token length:', token.length, ')')
+      }
     } else {
-      console.warn('API Request:', config.method?.toUpperCase(), config.url, 'without token')
-      console.warn('localStorage.getItem("token"):', localStorage.getItem('token'))
-      console.warn('localStorage keys:', Object.keys(localStorage))
+      // Only warn for non-auth endpoints (auth endpoints don't need tokens)
+      if (!config.url?.includes('/auth/')) {
+        console.warn('API Request:', config.method?.toUpperCase(), config.url, 'without token')
+        console.warn('localStorage.getItem("token"):', localStorage.getItem('token'))
+        console.warn('localStorage keys:', Object.keys(localStorage))
+      }
     }
     return config
   },

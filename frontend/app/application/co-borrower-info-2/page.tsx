@@ -12,6 +12,7 @@ import { AddressModal, AddressData } from '@/components/urla/AddressModal'
 import { MapPin } from 'lucide-react'
 import { urlaApi } from '@/lib/api'
 import { useFormChanges } from '@/hooks/useFormChanges'
+import { useApplicationState } from '@/hooks/useApplicationState'
 
 export default function CoBorrowerInfoPage2() {
   const router = useRouter()
@@ -21,8 +22,6 @@ export default function CoBorrowerInfoPage2() {
     isVeteran: false,
     liveTogether: true,
     currentAddress: '',
-    acceptTerms: false,
-    consentToContact: false,
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false)
@@ -30,6 +29,9 @@ export default function CoBorrowerInfoPage2() {
   
   // Track form changes to avoid unnecessary saves
   const { hasChanges, resetInitialData } = useFormChanges(formData)
+  
+  // Application state management
+  const appState = useApplicationState()
   
   // Ref for first input field to auto-focus
   const maritalStatusSelectRef = useRef<HTMLSelectElement>(null)
@@ -73,34 +75,39 @@ export default function CoBorrowerInfoPage2() {
   ]
 
   useEffect(() => {
-    // Load existing co-borrower data if applicationId is provided
-    const loadExistingData = async () => {
-      const applicationIdParam = searchParams?.get('applicationId')
-      const applicationIdFromStorage = sessionStorage.getItem('applicationId')
-      const applicationId = applicationIdParam || applicationIdFromStorage
-      
-      if (!applicationId) {
-        // If no applicationId, redirect back to first form
-        router.push('/application/co-borrower-info-1')
-        return
-      }
-
-      // Store in sessionStorage for consistency
-      if (applicationIdParam && !applicationIdFromStorage) {
-        sessionStorage.setItem('applicationId', applicationId)
-      }
-
-      // Try to load existing co-borrower data
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
-      if (!token) {
-        return // Can't load data without token
-      }
-
-      try {
-        const appResponse = await urlaApi.getApplication(applicationId)
-        const appData = appResponse.data
+      // Always load co-borrower-info-2 specific fields from database when form is accessed
+      // This ensures data is fresh whether accessed via forward or back navigation
+      const loadExistingData = async () => {
+        const applicationIdParam = searchParams?.get('applicationId')
+        const applicationId = applicationIdParam || appState.dealId
         
-        if (appData?.coBorrower) {
+        if (!applicationId) {
+          // If no applicationId, redirect back to first form
+          router.push('/application/co-borrower-info-1')
+          return
+        }
+
+        // Sync deal ID to state if from URL
+        if (applicationIdParam && !appState.dealId) {
+          appState.setDealId(applicationIdParam)
+        }
+
+        // Try to load existing co-borrower data
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+        if (!token) {
+          return // Can't load data without token
+        }
+
+        try {
+          // Always load from database to get fresh data
+          const appResponse = await urlaApi.getApplication(applicationId)
+          const appData = appResponse.data
+          
+          // Sync application state from API response
+          appState.syncFromApi(appData)
+          
+          // Load co-borrower-info-2 specific fields only
+          if (appData?.coBorrower || appData?.coBorrowerId) {
           const coBorrowerData = appData.coBorrower as any
           
           // Normalize marital status
@@ -136,8 +143,6 @@ export default function CoBorrowerInfoPage2() {
             isVeteran: isVeteran,
             liveTogether: liveTogether,
             currentAddress: coBorrowerData?.currentAddress || coBorrowerData?.currentResidence?.fullAddress || '',
-            acceptTerms: false, // Consents are typically not stored for co-borrower
-            consentToContact: false,
           }
           setFormData(loadedData)
           // Reset initial data after loading
@@ -148,8 +153,10 @@ export default function CoBorrowerInfoPage2() {
       }
     }
 
+    // Always load co-borrower-info-2 fields from database when form is accessed
+    // This ensures data is fresh whether accessed via forward or back navigation
     loadExistingData()
-  }, [searchParams, router])
+  }, [searchParams, appState.dealId])
   
   // Auto-focus first field when form is ready
   useEffect(() => {
@@ -212,14 +219,8 @@ export default function CoBorrowerInfoPage2() {
     if (!formData.maritalStatus) {
       newErrors.maritalStatus = 'Co-applicant Marital Status is required'
     }
-    if (!formData.liveTogether && !formData.currentAddress.trim()) {
-      newErrors.currentAddress = 'Current Address is required when not living together'
-    }
-    if (!formData.acceptTerms) {
-      newErrors.acceptTerms = 'You must accept the Terms of Service'
-    }
-    if (!formData.consentToContact) {
-      newErrors.consentToContact = 'You must consent to contact'
+    if (!formData.currentAddress.trim()) {
+      newErrors.currentAddress = 'Current Address is required'
     }
 
     setErrors(newErrors)
@@ -233,7 +234,7 @@ export default function CoBorrowerInfoPage2() {
       return
     }
 
-    const applicationId = searchParams?.get('applicationId') || sessionStorage.getItem('applicationId')
+    const applicationId = searchParams?.get('applicationId') || appState.dealId
     
     if (!applicationId) {
       setErrors({ submit: 'Application ID not found. Please start over.' })
@@ -250,22 +251,30 @@ export default function CoBorrowerInfoPage2() {
         const { streetAddress, city, state, zipCode } = parseAddress(formData.currentAddress)
 
         // Save co-borrower additional information
+        // Note: Do NOT include email/phone - the co-borrower ID should be found via the deal
+        // The co-borrower was created in co-borrower-info-1 and linked to the deal via borrower_progress
         const saveData = {
           coBorrower: {
             maritalStatus: formData.maritalStatus,
             isVeteran: formData.isVeteran,
             liveTogether: formData.liveTogether,
-            address: !formData.liveTogether ? streetAddress : undefined,
-            city: !formData.liveTogether ? city : undefined,
-            state: !formData.liveTogether ? state : undefined,
-            zipCode: !formData.liveTogether ? zipCode : undefined,
-            acceptTerms: formData.acceptTerms,
-            consentToContact: formData.consentToContact,
+            address: streetAddress,
+            city: city,
+            state: state,
+            zipCode: zipCode,
           },
           nextFormStep: 'review', // Set next form step to Getting Started Summary
         }
 
-        await urlaApi.saveApplication(applicationId, saveData)
+        const response = await urlaApi.saveApplication(applicationId, saveData)
+        
+        // Sync application state from API response
+        if (response.data) {
+          appState.syncFromApi(response.data)
+        }
+        
+        // Update form step in state
+        appState.setCurrentFormStep('review')
         
         // Reset initial data after successful save
         resetInitialData(formData)
@@ -293,7 +302,7 @@ export default function CoBorrowerInfoPage2() {
 
   const handleBack = () => {
     // Go back to co-borrower-info-1
-    const applicationId = searchParams?.get('applicationId') || sessionStorage.getItem('applicationId')
+    const applicationId = searchParams?.get('applicationId') || appState.dealId
     if (applicationId) {
       router.push(`/application/co-borrower-info-1?applicationId=${applicationId}`)
     } else {
@@ -318,7 +327,7 @@ export default function CoBorrowerInfoPage2() {
 
           <div className="bg-[#e6e6e6] rounded-lg p-3 md:p-4 text-left text-sm md:text-base text-[#334D5C] relative mb-2.5 md:mb-4 max-w-full inline-block">
             <div className="whitespace-pre-line">
-              Please provide additional information about your co-applicant and review the consent agreements.
+              Please provide additional information about your co-applicant.
             </div>
             <div className="hidden lg:block absolute -left-2 bottom-0 w-0 h-0 border-l-[11px] border-l-transparent border-b-[11px] border-b-[#e6e6e6] border-r-[8px] border-r-[#e6e6e6]"></div>
           </div>
@@ -367,68 +376,38 @@ export default function CoBorrowerInfoPage2() {
               </Label>
             </div>
 
-            {!formData.liveTogether && (
-              <div>
-                <Label htmlFor="currentAddress" className="text-sm font-medium text-gray-700">
-                  Current Address <span className="text-red-500">*</span>
-                </Label>
-                <div className="relative mt-1">
-                  <Input
-                    id="currentAddress"
-                    name="currentAddress"
-                    type="text"
-                    required={!formData.liveTogether}
-                    value={formData.currentAddress}
-                    onClick={handleAddressFieldClick}
-                    readOnly
-                    className={`${errors.currentAddress ? 'border-red-500' : ''} cursor-pointer pr-10`}
-                    autoComplete="street-address"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddressFieldClick}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-indigo-600 transition-colors"
-                    aria-label="Edit address"
-                  >
-                    <MapPin className="w-5 h-5" />
-                  </button>
-                </div>
-                {errors.currentAddress && (
-                  <p className="mt-1 text-sm text-red-500">{errors.currentAddress}</p>
-                )}
-                <p className="mt-1 text-xs text-gray-500">
-                  Click the field or icon to enter the address
-                </p>
+            <div>
+              <Label htmlFor="currentAddress" className="text-sm font-medium text-gray-700">
+                Current Address <span className="text-red-500">*</span>
+              </Label>
+              <div className="relative mt-1">
+                <Input
+                  id="currentAddress"
+                  name="currentAddress"
+                  type="text"
+                  required
+                  value={formData.currentAddress}
+                  onClick={handleAddressFieldClick}
+                  readOnly
+                  className={`${errors.currentAddress ? 'border-red-500' : ''} cursor-pointer pr-10`}
+                  autoComplete="street-address"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddressFieldClick}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-indigo-600 transition-colors"
+                  aria-label="Edit address"
+                >
+                  <MapPin className="w-5 h-5" />
+                </button>
               </div>
-            )}
-
-            <div className="flex items-center space-x-3 py-2">
-              <Switch
-                id="acceptTerms"
-                checked={formData.acceptTerms}
-                onCheckedChange={(checked) => handleInputChange('acceptTerms', checked)}
-              />
-              <Label htmlFor="acceptTerms" className="text-sm font-medium text-gray-700 cursor-pointer">
-                I accept the Terms of Service <span className="text-red-500">*</span>
-              </Label>
+              {errors.currentAddress && (
+                <p className="mt-1 text-sm text-red-500">{errors.currentAddress}</p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">
+                Click the field or icon to enter the address
+              </p>
             </div>
-            {errors.acceptTerms && (
-              <p className="mt-1 text-sm text-red-500">{errors.acceptTerms}</p>
-            )}
-
-            <div className="flex items-center space-x-3 py-2">
-              <Switch
-                id="consentToContact"
-                checked={formData.consentToContact}
-                onCheckedChange={(checked) => handleInputChange('consentToContact', checked)}
-              />
-              <Label htmlFor="consentToContact" className="text-sm font-medium text-gray-700 cursor-pointer">
-                I consent to be contacted regarding this application <span className="text-red-500">*</span>
-              </Label>
-            </div>
-            {errors.consentToContact && (
-              <p className="mt-1 text-sm text-red-500">{errors.consentToContact}</p>
-            )}
           </div>
 
           <div className="pt-4 flex justify-center">

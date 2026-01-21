@@ -7,11 +7,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Form1003Layout, FormSection } from '@/components/urla/Form1003Layout'
 import { BorrowerBasicInfoForm, BorrowerBasicInfoFormData } from '@/components/urla/BorrowerBasicInfoForm'
-import { parsePhoneNumber } from '@/components/ui/PhoneInput'
+import { parsePhoneNumber, formatPhoneNumber } from '@/components/ui/PhoneInput'
 import { urlaApi } from '@/lib/api'
 import { authUtils } from '@/lib/auth'
 import { useAuth } from '@/hooks/useAuth'
 import { useFormChanges } from '@/hooks/useFormChanges'
+import { useApplicationState } from '@/hooks/useApplicationState'
 
 export default function BorrowerInfoPage1() {
   const router = useRouter()
@@ -40,18 +41,26 @@ export default function BorrowerInfoPage1() {
   // Track form changes to avoid unnecessary saves
   const { hasChanges, resetInitialData } = useFormChanges(formData)
   
+  // Application state management
+  const appState = useApplicationState()
+  
   // Ref for first input field to auto-focus
   const firstNameInputRef = useRef<HTMLInputElement>(null)
 
-  // Load existing application data if applicationId is provided
+  // Always load borrower-info-1 specific fields from database when form is accessed
+  // This ensures data is fresh whether accessed via forward or back navigation
   useEffect(() => {
     const loadExistingData = async () => {
-      // Check for applicationId in URL params or sessionStorage
+      // Get deal ID from URL params or application state
       const applicationIdParam = searchParams?.get('applicationId')
-      const applicationIdFromStorage = sessionStorage.getItem('applicationId')
-      const applicationId = applicationIdParam || applicationIdFromStorage
+      const applicationId = applicationIdParam || appState.dealId
 
-      // Only try to load from API if user is authenticated
+      // Sync deal ID to state if from URL
+      if (applicationIdParam && !appState.dealId) {
+        appState.setDealId(applicationIdParam)
+      }
+
+      // Only try to load from API if user is authenticated and application exists
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
       
       // If no applicationId or no token, show form immediately (new application)
@@ -60,11 +69,15 @@ export default function BorrowerInfoPage1() {
         return
       }
       
-      // Try to load existing data for authenticated users
+      // Always load borrower-info-1 fields from database
       try {
         const appResponse = await urlaApi.getApplication(applicationId)
         const appData = appResponse.data
         
+        // Sync application state from API response
+        appState.syncFromApi(appData)
+        
+        // Load borrower-info-1 specific fields only (firstName, lastName, email, phone, phoneType)
         if (appData?.borrower) {
           const borrowerData = appData.borrower as any
           const loadedData = {
@@ -74,8 +87,9 @@ export default function BorrowerInfoPage1() {
             suffix: borrowerData?.suffix || '',
             email: borrowerData?.email || '',
             confirmEmail: borrowerData?.email || '',
-            phone: borrowerData?.phone || '',
+            phone: borrowerData?.phone ? formatPhoneNumber(borrowerData.phone) : '',
             phoneType: borrowerData?.phoneType || 'MOBILE',
+            // These fields belong to borrower-info-2, not borrower-info-1
             maritalStatus: '',
             isVeteran: false,
             currentAddress: '',
@@ -100,7 +114,7 @@ export default function BorrowerInfoPage1() {
     }
 
     loadExistingData()
-  }, [searchParams])
+  }, [searchParams, appState.dealId])
   
   // Auto-focus first field when form is loaded
   useEffect(() => {
@@ -228,10 +242,9 @@ export default function BorrowerInfoPage1() {
     setIsSubmitting(true)
 
     try {
-      // Check if application already exists
+      // Get deal ID from URL params or application state
       const applicationIdParam = searchParams?.get('applicationId')
-      const applicationIdFromStorage = sessionStorage.getItem('applicationId')
-      const existingApplicationId = applicationIdParam || applicationIdFromStorage
+      const existingApplicationId = applicationIdParam || appState.dealId
 
       if (existingApplicationId) {
         // Only save if form data has changed
@@ -249,19 +262,19 @@ export default function BorrowerInfoPage1() {
             nextFormStep: 'borrower-info-2',
           }
 
-          await urlaApi.saveApplication(existingApplicationId, saveData)
+          const response = await urlaApi.saveApplication(existingApplicationId, saveData)
+          
+          // Sync application state from API response (may include borrower ID)
+          if (response.data) {
+            appState.syncFromApi(response.data)
+          }
           
           // Reset initial data after successful save
           resetInitialData(formData)
         }
 
-        // Store borrower data in sessionStorage for review page
-        const borrowerData = {
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          email: formData.email,
-        }
-        sessionStorage.setItem('borrowerData', JSON.stringify(borrowerData))
+        // Update form step in state
+        appState.setCurrentFormStep('borrower-info-2')
 
         // Navigate to borrower-info-2 (even if no changes were made)
         router.push(`/application/borrower-info-2?applicationId=${existingApplicationId}`)
@@ -319,16 +332,16 @@ export default function BorrowerInfoPage1() {
 
         // Navigate to the second borrower info form
         if (response.data.application?.id) {
-          // Store application ID for the second form
-          sessionStorage.setItem('applicationId', response.data.application.id.toString())
+          // Sync application state from API response
+          appState.syncFromApi(response.data.application)
           
-          // Store borrower data in sessionStorage for review page
-          const borrowerData = {
-            firstName: formData.firstName,
-            lastName: formData.lastName,
-            email: formData.email,
+          // Set borrower ID if available from user data
+          if (response.data.user?.id) {
+            appState.setBorrowerId(response.data.user.id)
           }
-          sessionStorage.setItem('borrowerData', JSON.stringify(borrowerData))
+          
+          // Update form step
+          appState.setCurrentFormStep('borrower-info-2')
           
           // Initialize progress tracking - mark that borrower info has been started
           try {
@@ -337,6 +350,7 @@ export default function BorrowerInfoPage1() {
               'Section1a_PersonalInfo',
               false // Not complete yet, but started
             )
+            appState.updateBorrowerProgress('Section1a_PersonalInfo', false)
           } catch (progressError) {
             console.error('Failed to initialize progress:', progressError)
             // Continue anyway - progress will be initialized by the database trigger
@@ -366,17 +380,8 @@ export default function BorrowerInfoPage1() {
     }
   }
 
-  const handleBack = () => {
-    // Go back to the previous form in the 1003 flow
-    const applicationId = searchParams?.get('applicationId') || sessionStorage.getItem('applicationId')
-    if (applicationId) {
-      // If application exists, go back to review (Getting Started Summary)
-      router.push(`/application/review?applicationId=${applicationId}`)
-    } else {
-      // For new applications, go back to loan form
-      router.push('/application/loan')
-    }
-  }
+  // No handleBack - borrower-info-1 is the first form in the 1003 chain
+  // Back button should not be shown for the first form
 
   if (isLoading) {
     return (
@@ -384,7 +389,6 @@ export default function BorrowerInfoPage1() {
         sections={sections}
         currentSectionId="getting-started"
         title="Getting Started"
-        onBack={handleBack}
       >
         <div className="text-center text-gray-500 py-12">Loading...</div>
       </Form1003Layout>
@@ -397,7 +401,6 @@ export default function BorrowerInfoPage1() {
         sections={sections}
         currentSectionId="getting-started"
         title="Getting Started"
-        onBack={handleBack}
       >
         <form onSubmit={handleSubmit} className="space-y-6">
           {errors.submit && (

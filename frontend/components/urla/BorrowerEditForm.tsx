@@ -11,7 +11,7 @@ import { parsePhoneNumber } from '@/components/ui/PhoneInput'
 import { urlaApi } from '@/lib/api'
 
 interface BorrowerEditFormProps {
-  applicationId?: number
+  applicationId?: string
   onSave: () => void
   onCancel: () => void
 }

@@ -128,9 +128,10 @@ func (s *ApplicationService) GetApplication(dealID string) (map[string]interface
 			if borrower.EmailAddress.Valid {
 				borrowerEmail = borrower.EmailAddress.String
 			}
-			log.Printf("GetApplication: Found borrower %d - firstName=%s, lastName=%s, email=%s",
+			log.Printf("GetApplication: Found borrower %s - firstName=%s, lastName=%s, email=%s",
 				borrower.ID, borrower.FirstName, borrower.LastName, borrowerEmail)
 			borrowerData := make(map[string]interface{})
+			borrowerData["id"] = borrower.ID // Include borrower ID for state management
 			borrowerData["firstName"] = borrower.FirstName
 			if borrower.MiddleName.Valid {
 				borrowerData["middleName"] = borrower.MiddleName.String
@@ -222,6 +223,7 @@ func (s *ApplicationService) GetApplication(dealID string) (map[string]interface
 			}
 
 			result["borrower"] = borrowerData
+			result["borrowerId"] = borrower.ID // Also include at top level for easy access
 			log.Printf("GetApplication: Added borrower data to result for application %s", dealID)
 		} else {
 			log.Printf("GetApplication: Borrower not found or error for borrower ID %s", deal.PrimaryBorrowerID.String)
@@ -240,6 +242,7 @@ func (s *ApplicationService) GetApplication(dealID string) (map[string]interface
 				// For now, we only support one co-borrower, so take the first one
 				coBorrower := coBorrowers[0]
 				coBorrowerData := make(map[string]interface{})
+				coBorrowerData["id"] = coBorrower.ID // Include co-borrower ID for state management
 				coBorrowerData["firstName"] = coBorrower.FirstName
 				if coBorrower.MiddleName.Valid {
 					coBorrowerData["middleName"] = coBorrower.MiddleName.String
@@ -307,6 +310,7 @@ func (s *ApplicationService) GetApplication(dealID string) (map[string]interface
 				}
 
 				result["coBorrower"] = coBorrowerData
+				result["coBorrowerId"] = coBorrower.ID // Also include at top level for easy access
 				log.Printf("GetApplication: Added co-borrower data to result for application %s", dealID)
 			} else {
 				log.Printf("GetApplication: No co-borrowers found for deal %s (checked borrower_progress table)", dealID)
@@ -341,11 +345,12 @@ func (s *ApplicationService) UpdateApplicationStatus(applicationID string, statu
 func (s *ApplicationService) GetApplicationsByEmployee(userID string) ([]ApplicationResponse, error) {
 	rows, err := s.dealRepo.GetDealsByUserID(userID)
 	if err != nil {
-		return nil, errors.New("failed to retrieve applications")
+		return make([]ApplicationResponse, 0), errors.New("failed to retrieve applications")
 	}
 	defer rows.Close()
 
-	var applications []ApplicationResponse
+	// Initialize as empty slice, not nil, so it serializes to [] instead of null in JSON
+	applications := make([]ApplicationResponse, 0)
 	for rows.Next() {
 		var app struct {
 			ID              string
@@ -410,14 +415,25 @@ func (s *ApplicationService) GetApplicationsByEmployee(userID string) ([]Applica
 
 // GetApplicationsByBorrower retrieves all applications for a borrower
 func (s *ApplicationService) GetApplicationsByBorrower(borrowerID string) ([]ApplicationResponse, error) {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+	log.Printf("=== GetApplicationsByBorrower: START for borrower ID: %s ===", borrowerID)
 	rows, err := s.dealRepo.GetDealsByBorrowerID(borrowerID)
 	if err != nil {
-		return nil, errors.New("failed to retrieve applications")
+		log.Printf("GetApplicationsByBorrower: Error querying deals for borrower %s: %v", borrowerID, err)
+		// Return empty slice instead of nil to ensure JSON serializes correctly
+		return make([]ApplicationResponse, 0), errors.New("failed to retrieve applications")
 	}
 	defer rows.Close()
 
-	var applications []ApplicationResponse
+	// Initialize as empty slice, not nil, so it serializes to [] instead of null in JSON
+	applications := make([]ApplicationResponse, 0)
+	log.Printf("GetApplicationsByBorrower: Query executed successfully, about to iterate rows for borrower %s", borrowerID)
+	rowCount := 0
+	hasAnyRows := false
 	for rows.Next() {
+		hasAnyRows = true
+		rowCount++
+		log.Printf("GetApplicationsByBorrower: Processing row %d for borrower %s", rowCount, borrowerID)
 		var app struct {
 			ID                string
 			LoanNumber        sql.NullString
@@ -438,8 +454,10 @@ func (s *ApplicationService) GetApplicationsByBorrower(borrowerID string) ([]App
 			&app.LastUpdatedAt, &app.ProgressPercentage, &app.LastUpdatedSection,
 		)
 		if err != nil {
+			log.Printf("GetApplicationsByBorrower: Error scanning row %d for borrower %s: %v", rowCount, borrowerID, err)
 			continue
 		}
+		log.Printf("GetApplicationsByBorrower: Successfully scanned row %d, app.ID=%s", rowCount, app.ID)
 
 		loanPurpose := ""
 		if app.LoanPurpose.Valid {
@@ -485,9 +503,27 @@ func (s *ApplicationService) GetApplicationsByBorrower(borrowerID string) ([]App
 			ProgressPercentage: progressPercentage,
 			LastUpdatedSection: lastUpdatedSection,
 		})
+		log.Printf("GetApplicationsByBorrower: Found application %s for borrower %s", app.ID, borrowerID)
 	}
 
-	return applications, rows.Err()
+	if err := rows.Err(); err != nil {
+		log.Printf("GetApplicationsByBorrower: Error iterating rows for borrower %s: %v", borrowerID, err)
+		// Return empty slice instead of nil on error to ensure JSON serializes correctly
+		return make([]ApplicationResponse, 0), err
+	}
+
+	if !hasAnyRows {
+		log.Printf("GetApplicationsByBorrower: WARNING - rows.Next() never returned true for borrower %s. No rows found.", borrowerID)
+	} else {
+		log.Printf("GetApplicationsByBorrower: Processed %d rows, found %d applications for borrower %s", rowCount, len(applications), borrowerID)
+	}
+	// Ensure we always return a non-nil slice (applications is already initialized as empty slice above)
+	if applications == nil {
+		log.Printf("GetApplicationsByBorrower: WARNING - applications is nil, converting to empty slice")
+		applications = make([]ApplicationResponse, 0)
+	}
+	log.Printf("=== GetApplicationsByBorrower: END - returning %d applications ===", len(applications))
+	return applications, nil
 }
 
 // CreateApplicationForBorrower creates a new application for a borrower

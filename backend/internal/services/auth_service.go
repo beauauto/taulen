@@ -165,14 +165,6 @@ func (s *AuthService) Register(req RegisterRequest) (*AuthResponse, error) {
 // NOTE: 2FA is currently disabled - verification code check is bypassed
 func (s *AuthService) VerifyAndRegister(req VerifyAndRegisterRequest) (*AuthResponse, error) {
 	// 2FA is disabled - skip verification code check
-	// TODO: Re-enable when 2FA is needed
-	// valid, err := s.borrowerRepo.VerifyCode(req.Email, req.VerificationCode)
-	// if err != nil {
-	// 	return nil, errors.New("failed to verify code")
-	// }
-	// if !valid {
-	// 	return nil, errors.New("invalid or expired verification code")
-	// }
 
 	// Check if borrower already exists
 	existingBorrower, err := s.borrowerRepo.GetByEmail(req.Email)
@@ -306,18 +298,6 @@ func (s *AuthService) SendLoginVerificationCode(req SendLoginVerificationCodeReq
 // NOTE: 2FA is currently disabled - password-only authentication
 func (s *AuthService) Login(req LoginRequest) (*AuthResponse, error) {
 	// 2FA is disabled - skip verification code check
-	// TODO: Re-enable when 2FA is needed
-	// if req.VerificationCode != "" {
-	// 	valid, err := s.borrowerRepo.VerifyCode(req.Email, req.VerificationCode)
-	// 	if err != nil {
-	// 		return nil, errors.New("failed to verify code")
-	// 	}
-	// 	if !valid {
-	// 		return nil, errors.New("invalid or expired verification code")
-	// 	}
-	// } else {
-	// 	return nil, errors.New("verification code required. Please request a verification code first.")
-	// }
 	
 	// Try borrower login first
 	borrower, err := s.borrowerRepo.GetByEmail(req.Email)

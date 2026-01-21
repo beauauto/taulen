@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react'
 export default function BuyReviewPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [applicationId, setApplicationId] = useState<number | undefined>(undefined)
+  const [applicationId, setApplicationId] = useState<string | undefined>(undefined)
   const editMode = searchParams?.get('edit') // 'transaction' or 'borrower'
 
   useEffect(() => {
@@ -20,8 +20,7 @@ export default function BuyReviewPage() {
     const appId = appIdFromUrl || storedAppId
     
     if (appId) {
-      const id = parseInt(appId, 10)
-      setApplicationId(id)
+      setApplicationId(appId)
       // Store in sessionStorage if from URL
       if (appIdFromUrl && !storedAppId) {
         sessionStorage.setItem('applicationId', appId)
@@ -46,7 +45,7 @@ export default function BuyReviewPage() {
       try {
         const { urlaApi } = await import('@/lib/api')
         await urlaApi.saveApplication(
-          typeof appId === 'number' ? appId : parseInt(appId, 10),
+          appId,
           {
             nextFormStep: 'getting-to-know-you-intro',
           }
@@ -103,21 +102,19 @@ export default function BuyReviewPage() {
   }
 
   const handleBack = async () => {
-    // Go back to the last completed form in the 1003 flow
+    // Go back to the previous form in the 1003 flow
     // Check if co-borrower exists to determine which form to go back to
     const appId = applicationId || sessionStorage.getItem('applicationId')
     
     if (appId) {
       try {
         const { urlaApi } = await import('@/lib/api')
-        const appResponse = await urlaApi.getApplication(
-          typeof appId === 'number' ? appId : parseInt(appId, 10)
-        )
+        const appResponse = await urlaApi.getApplication(appId)
         const appData = appResponse.data
         
         // If co-borrower exists, go back to co-borrower-info-2
         // Otherwise, go back to borrower-info-2
-        if (appData?.coBorrower) {
+        if (appData?.coBorrower || appData?.coBorrowerId) {
           router.push(`/application/co-borrower-info-2?applicationId=${appId}`)
         } else {
           router.push(`/application/borrower-info-2?applicationId=${appId}`)

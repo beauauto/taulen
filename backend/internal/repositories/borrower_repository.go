@@ -555,6 +555,34 @@ func (r *BorrowerRepository) LinkBorrowerToDeal(borrowerID, dealID string) error
 	return err
 }
 
+// GetByEmailOrPhone retrieves a borrower by email OR phone number (checks mobile_phone, home_phone, and work_phone)
+// Returns the borrower if found by either email or phone, nil if not found
+func (r *BorrowerRepository) GetByEmailOrPhone(email, phone string) (*Borrower, error) {
+	// First try by email if provided
+	if email != "" {
+		borrower, err := r.GetByEmail(email)
+		if err == nil {
+			return borrower, nil
+		}
+		if err != sql.ErrNoRows {
+			return nil, err
+		}
+	}
+	
+	// Then try by phone if provided
+	if phone != "" {
+		borrower, err := r.GetByPhone(phone)
+		if err == nil {
+			return borrower, nil
+		}
+		if err != sql.ErrNoRows {
+			return nil, err
+		}
+	}
+	
+	return nil, sql.ErrNoRows
+}
+
 // GetCoBorrowersByDealID retrieves all co-borrowers (non-primary) for a deal
 func (r *BorrowerRepository) GetCoBorrowersByDealID(dealID, primaryBorrowerID string) ([]*Borrower, error) {
 	query := `SELECT b.id, b.first_name, b.middle_name, b.last_name, b.suffix, 

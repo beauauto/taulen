@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"database/sql"
+	"log"
 	"taulen/backend/internal/database"
 )
 
@@ -178,7 +179,8 @@ func (r *DealRepository) GetDealsByUserID(userID string) (*sql.Rows, error) {
 
 // GetDealsByBorrowerID retrieves all deals for a borrower, ordered by latest modification
 func (r *DealRepository) GetDealsByBorrowerID(borrowerID string) (*sql.Rows, error) {
-	query := `SELECT d.id, d.loan_number, d.application_type, d.application_date, d.created_at, d.status,
+	// Note: deal table doesn't have a status column, so we use 'Draft' as default
+	query := `SELECT d.id, d.loan_number, d.application_type, d.application_date, d.created_at, 'Draft' as status,
 		l.loan_purpose_type, l.loan_amount_requested,
 		COALESCE(dp.updated_at, d.created_at) as last_updated_at,
 		dp.progress_percentage, dp.last_updated_section
@@ -187,7 +189,16 @@ func (r *DealRepository) GetDealsByBorrowerID(borrowerID string) (*sql.Rows, err
 		LEFT JOIN deal_progress dp ON dp.deal_id = d.id
 		WHERE d.primary_borrower_id = $1
 		ORDER BY COALESCE(dp.updated_at, d.created_at) DESC, d.created_at DESC`
-	return r.db.Query(query, borrowerID)
+	
+	// Log the query for debugging
+	log.Printf("GetDealsByBorrowerID: Executing query for borrower ID: %s", borrowerID)
+	rows, err := r.db.Query(query, borrowerID)
+	if err != nil {
+		log.Printf("GetDealsByBorrowerID: Query error for borrower %s: %v", borrowerID, err)
+		return nil, err
+	}
+	log.Printf("GetDealsByBorrowerID: Query executed successfully for borrower %s", borrowerID)
+	return rows, nil
 }
 
 // ListDeals retrieves all deals with pagination

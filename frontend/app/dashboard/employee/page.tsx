@@ -9,7 +9,7 @@ import Link from 'next/link'
 import { urlaApi } from '@/lib/api'
 
 interface Application {
-  id: number
+  id: string
   loanType: string
   loanPurpose: string
   loanAmount: number

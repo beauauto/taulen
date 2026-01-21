@@ -6,6 +6,7 @@ import { authUtils } from '@/lib/auth'
 import { cookieUtils } from '@/lib/cookies'
 import { authApi } from '@/lib/api'
 import { User } from '@/types/user'
+import { syncApplicationStateFromApi, setBorrowerId, updateBorrowerProgress, updateDealProgress } from '@/lib/applicationState'
 
 export function useAuth() {
   const router = useRouter()
@@ -141,11 +142,19 @@ export function useAuth() {
           const tokenCheck = authUtils.getToken() || localStorage.getItem('token')
           console.log('Token check after delay:', !!tokenCheck, 'length:', tokenCheck?.length)
           
+          console.log('About to call getMyApplications API...')
+          console.log('Current token check:', {
+            authUtils: !!authUtils.getToken(),
+            localStorage: !!localStorage.getItem('token'),
+            cookie: !!cookieUtils.getCookie('token'),
+          })
+          
           const appsResponse = await urlaApi.getMyApplications()
           console.log('Full applications response:', JSON.stringify(appsResponse, null, 2))
           console.log('Response status:', appsResponse.status)
           console.log('Response data:', appsResponse.data)
           console.log('Response data type:', typeof appsResponse.data)
+          console.log('Response headers:', appsResponse.headers)
           
           // Handle different response formats
           let applications: any[] = []
@@ -185,10 +194,37 @@ export function useAuth() {
             console.log('Most recent application ID:', mostRecentApp.id)
             console.log('Most recent application:', mostRecentApp)
             
-            // Get application progress to determine where they left off
+            // Load and sync application state (IDs and progress)
+            try {
+              // Load full application data (includes borrower ID, co-borrower ID, etc.)
+              const appDataResponse = await urlaApi.getApplication(mostRecentApp.id)
+              console.log('Loaded application data for state sync:', appDataResponse.data)
+              
+              // Sync application state (deal ID, borrower ID, co-borrower ID, current form step)
+              syncApplicationStateFromApi(appDataResponse.data)
+              
+              // Also set borrower ID from user data if not already set
+              if (userData.id && !appDataResponse.data?.borrowerId && !appDataResponse.data?.borrower?.id) {
+                setBorrowerId(userData.id)
+              }
+            } catch (appDataError) {
+              console.warn('Failed to load application data for state sync (non-critical):', appDataError)
+              // Continue - state will be synced when user navigates to application
+            }
+            
+            // Get application progress to determine where they left off and sync progress state
             try {
               const progressResponse = await urlaApi.getApplicationProgress(mostRecentApp.id)
               const progress = progressResponse.data
+              
+              // Sync progress states
+              // The backend returns progress.sections with section names as keys and boolean completion as values
+              if (progress && progress.sections) {
+                Object.entries(progress.sections).forEach(([section, completed]: [string, any]) => {
+                  // All sections are deal-level progress
+                  updateDealProgress(section, completed === true)
+                })
+              }
               
               // Determine redirect path based on progress
               // If progress is very low (0-5%), they likely haven't completed borrower info
@@ -208,6 +244,11 @@ export function useAuth() {
               console.log('Redirecting to application (fallback):', redirectPath)
             }
           } else {
+            // No applications yet - set borrower ID from user data
+            if (userData.id) {
+              setBorrowerId(userData.id)
+            }
+            
             // No applications yet - redirect to applications page
             // The applications page will show the option to start a new application
             // This prevents accidentally creating a new application on login

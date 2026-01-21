@@ -53,27 +53,6 @@ func (h *AuthHandler) Register(c *gin.Context) {
 func (h *AuthHandler) SendVerificationCodeForRegister(c *gin.Context) {
 	// 2FA is disabled - return message indicating it's not needed
 	c.JSON(http.StatusOK, gin.H{"message": "2FA is currently disabled. Registration does not require verification code."})
-	
-	// TODO: Re-enable when 2FA is needed
-	// var req struct {
-	// 	Email string `json:"email" binding:"required,email"`
-	// 	Phone string `json:"phone"` // Phone is now optional (SMS disabled)
-	// }
-	// if err := c.ShouldBindJSON(&req); err != nil {
-	// 	c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-	// 	return
-	// }
-	// urlaService := services.NewURLAService(h.authService.GetConfig())
-	// err := urlaService.SendVerificationCode(services.SendVerificationCodeRequest{
-	// 	Email:            req.Email,
-	// 	Phone:            req.Phone,
-	// 	VerificationMethod: "email",
-	// })
-	// if err != nil {
-	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-	// 	return
-	// }
-	// c.JSON(http.StatusOK, gin.H{"message": "Verification code sent successfully to your email"})
 }
 
 // VerifyAndRegister handles registration with verification code
@@ -108,19 +87,6 @@ func (h *AuthHandler) VerifyAndRegister(c *gin.Context) {
 func (h *AuthHandler) SendLoginVerificationCode(c *gin.Context) {
 	// 2FA is disabled - return message indicating it's not needed
 	c.JSON(http.StatusOK, gin.H{"message": "2FA is currently disabled. Login does not require verification code."})
-	
-	// TODO: Re-enable when 2FA is needed
-	// var req services.SendLoginVerificationCodeRequest
-	// if err := c.ShouldBindJSON(&req); err != nil {
-	// 	c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-	// 	return
-	// }
-	// err := h.authService.SendLoginVerificationCode(req)
-	// if err != nil {
-	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-	// 	return
-	// }
-	// c.JSON(http.StatusOK, gin.H{"message": "Verification code sent successfully to your email"})
 }
 
 // Login handles user login (2FA is currently disabled)

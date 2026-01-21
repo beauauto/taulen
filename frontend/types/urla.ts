@@ -1,5 +1,5 @@
 export interface URLAApplication {
-  id: number
+  id: string
   loanType: string
   loanPurpose: string
   loanAmount: number
@@ -74,7 +74,7 @@ export interface LiabilityInfo {
 }
 
 export interface URLAFormData {
-  applicationId?: number
+  applicationId?: string
   borrower: BorrowerInfo
   property?: PropertyInfo
   employment?: EmploymentInfo[]
