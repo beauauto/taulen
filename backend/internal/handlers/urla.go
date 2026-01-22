@@ -116,11 +116,16 @@ func (h *URLAHandler) SaveApplication(c *gin.Context) {
 
 	// Save borrower information if provided
 	if borrowerData, ok := req["borrower"].(map[string]interface{}); ok {
+		log.Printf("SaveApplication: Saving borrower data for deal %s: %+v", idStr, borrowerData)
 		err := h.urlaService.SaveBorrowerData(idStr, borrowerData, nextFormStep)
 		if err != nil {
+			log.Printf("SaveApplication: Error saving borrower data: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save borrower data: " + err.Error()})
 			return
 		}
+		log.Printf("SaveApplication: Successfully saved borrower data for deal %s", idStr)
+	} else {
+		log.Printf("SaveApplication: No borrower data provided in request for deal %s", idStr)
 	}
 
 	// Save co-borrower information if provided
@@ -154,7 +159,18 @@ func (h *URLAHandler) SaveApplication(c *gin.Context) {
 
 	// TODO: Save other sections (property, employment, income, assets, liabilities) as needed
 
-	c.JSON(http.StatusOK, gin.H{"message": "Application saved"})
+	// Return success response with application data
+	// Fetch updated application to return to frontend
+	application, err := h.urlaService.GetApplication(idStr)
+	if err != nil {
+		log.Printf("SaveApplication: Warning - failed to fetch updated application: %v", err)
+		// Still return success, but without application data
+		c.JSON(http.StatusOK, gin.H{"message": "Application saved successfully"})
+		return
+	}
+	
+	log.Printf("SaveApplication: Successfully saved and returning application data for deal %s", idStr)
+	c.JSON(http.StatusOK, gin.H{"message": "Application saved successfully", "data": application})
 }
 
 // GetApplicationProgress handles getting application completion progress

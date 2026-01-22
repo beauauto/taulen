@@ -15,26 +15,52 @@ import { urlaApi } from '@/lib/api'
 import { useFormChanges } from '@/hooks/useFormChanges'
 import { useApplicationState } from '@/hooks/useApplicationState'
 
+// Helper function to calculate move-in date from years/months duration
+function calculateMoveInDateFromDuration(years: string, months: string): string {
+  if (!years && !months) return ''
+  const totalMonths = (parseInt(years || '0') * 12) + parseInt(months || '0')
+  if (totalMonths === 0) return ''
+  const today = new Date()
+  const moveInDate = new Date(today)
+  moveInDate.setMonth(moveInDate.getMonth() - totalMonths)
+  return moveInDate.toISOString().split('T')[0]
+}
+
+// Helper function to calculate duration in months from move-in date
+function calculateDurationFromMoveInDate(moveInDate: string): { years: number; months: number } {
+  if (!moveInDate) return { years: 0, months: 0 }
+  const moveIn = new Date(moveInDate)
+  const today = new Date()
+  const diffTime = today.getTime() - moveIn.getTime()
+  const diffMonths = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 30.44)) // Average days per month
+  return {
+    years: Math.floor(diffMonths / 12),
+    months: diffMonths % 12
+  }
+}
+
 export default function BorrowerEditPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const appState = useApplicationState()
   
   const [formData, setFormData] = useState({
-    // Personal Information
+    // Personal Information (from borrower-info-1)
     firstName: '',
     middleName: '',
     lastName: '',
     suffix: '',
+    email: '',
+    phone: '', // Primary phone (from borrower-info-1)
+    phoneType: 'MOBILE', // Phone type (from borrower-info-1)
     ssn: '',
     dateOfBirth: '',
     
-    // Contact Information
-    email: '',
-    homePhone: '',
-    mobilePhone: '',
-    workPhone: '',
-    workPhoneExt: '',
+    // Contact Information (additional phone - optional)
+    hasAdditionalPhone: false,
+    additionalPhone: '',
+    additionalPhoneType: '',
+    workPhoneExt: '', // Only for work phone extension
     preferredContactMethod: 'EMAIL',
     
     // Current Address
@@ -43,36 +69,37 @@ export default function BorrowerEditPage() {
     currentAddressCity: '',
     currentAddressState: '',
     currentAddressZip: '',
-    yearsAtCurrentAddress: '',
-    monthsAtCurrentAddress: '',
+    moveInDateCurrent: '', // Move-in date for current address
     housingStatus: '',
+    sameAsMailing: true, // From borrower-info-2
     
-    // Previous Address (if less than 2 years at current)
-    hasPreviousAddress: false,
-    previousAddress: '',
-    previousAddressStreet: '',
-    previousAddressCity: '',
-    previousAddressState: '',
-    previousAddressZip: '',
-    yearsAtPreviousAddress: '',
-    monthsAtPreviousAddress: '',
-    previousHousingStatus: '',
+    // Previous Addresses (array to support multiple addresses until 2 years is covered)
+    previousAddresses: [] as Array<{
+      address: string
+      addressStreet: string
+      addressCity: string
+      addressState: string
+      addressZip: string
+      moveInDate: string
+      moveOutDate: string
+      housingStatus: string
+    }>,
     
     // Citizenship & Residency
     citizenshipType: '',
     alienRegistrationNumber: '',
     
-    // Marital Status
+    // Marital Status (from borrower-info-2)
     maritalStatus: '',
     
     // Dependents
     dependentCount: '',
     dependentAges: '',
     
-    // Military Status
+    // Military Status (from borrower-info-2)
     isVeteran: false,
     
-    // Consents
+    // Consents (from borrower-info-2)
     acceptTerms: false,
     consentToContact: false,
   })
@@ -80,6 +107,7 @@ export default function BorrowerEditPage() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false)
   const [isPreviousAddressModalOpen, setIsPreviousAddressModalOpen] = useState(false)
+  const [editingPreviousAddressIndex, setEditingPreviousAddressIndex] = useState<number | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   
@@ -127,23 +155,34 @@ export default function BorrowerEditPage() {
   // Load existing borrower data from database
   useEffect(() => {
     const loadExistingData = async () => {
+      setIsLoading(true)
       const applicationIdParam = searchParams?.get('applicationId')
-      const applicationId = applicationIdParam || appState.dealId
+      const applicationIdFromState = appState.dealId || sessionStorage.getItem('applicationId')
+      const applicationId = applicationIdParam || applicationIdFromState
+      
+      console.log('BorrowerEdit: Loading data for applicationId:', applicationId)
+      console.log('BorrowerEdit: applicationIdParam:', applicationIdParam)
+      console.log('BorrowerEdit: appState.dealId:', appState.dealId)
       
       if (applicationIdParam && !appState.dealId) {
         appState.setDealId(applicationIdParam)
+        sessionStorage.setItem('applicationId', applicationIdParam)
       }
       
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
       
       if (!applicationId || !token) {
+        console.warn('BorrowerEdit: Missing applicationId or token', { applicationId, hasToken: !!token })
         setIsLoading(false)
         return
       }
       
       try {
+        console.log('BorrowerEdit: Fetching application data from API...')
         const appResponse = await urlaApi.getApplication(applicationId)
         const appData = appResponse.data
+        
+        console.log('BorrowerEdit: Application data received:', appData)
         
         appState.syncFromApi(appData)
         
@@ -164,22 +203,108 @@ export default function BorrowerEditPage() {
             }
           }
           
+          // Determine primary phone and phoneType (from borrower-info-1)
+          let primaryPhone = ''
+          let primaryPhoneType = 'MOBILE'
+          if (borrower.phone) {
+            primaryPhone = formatPhoneNumber(borrower.phone)
+            primaryPhoneType = borrower.phoneType || 'MOBILE'
+          } else if (borrower.mobilePhone) {
+            primaryPhone = formatPhoneNumber(borrower.mobilePhone)
+            primaryPhoneType = 'MOBILE'
+          } else if (borrower.homePhone) {
+            primaryPhone = formatPhoneNumber(borrower.homePhone)
+            primaryPhoneType = 'HOME'
+          } else if (borrower.workPhone) {
+            primaryPhone = formatPhoneNumber(borrower.workPhone)
+            primaryPhoneType = 'WORK'
+          }
+          
+          // Contact Information (additional phone - determine if exists)
+          // Check if there's an additional phone beyond the primary one
+          let additionalPhone = ''
+          let additionalPhoneType = ''
+          let hasAdditionalPhone = false
+          
+          // Determine which phone fields are populated
+          const phones = {
+            MOBILE: borrower.mobilePhone ? formatPhoneNumber(borrower.mobilePhone) : '',
+            HOME: borrower.homePhone ? formatPhoneNumber(borrower.homePhone) : '',
+            WORK: borrower.workPhone ? formatPhoneNumber(borrower.workPhone) : '',
+          }
+          
+          // Find the additional phone (one that's not the primary phone type)
+          if (primaryPhoneType === 'MOBILE' && phones.HOME) {
+            additionalPhone = phones.HOME
+            additionalPhoneType = 'HOME'
+            hasAdditionalPhone = true
+          } else if (primaryPhoneType === 'MOBILE' && phones.WORK) {
+            additionalPhone = phones.WORK
+            additionalPhoneType = 'WORK'
+            hasAdditionalPhone = true
+          } else if (primaryPhoneType === 'HOME' && phones.MOBILE) {
+            additionalPhone = phones.MOBILE
+            additionalPhoneType = 'MOBILE'
+            hasAdditionalPhone = true
+          } else if (primaryPhoneType === 'HOME' && phones.WORK) {
+            additionalPhone = phones.WORK
+            additionalPhoneType = 'WORK'
+            hasAdditionalPhone = true
+          } else if (primaryPhoneType === 'WORK' && phones.MOBILE) {
+            additionalPhone = phones.MOBILE
+            additionalPhoneType = 'MOBILE'
+            hasAdditionalPhone = true
+          } else if (primaryPhoneType === 'WORK' && phones.HOME) {
+            additionalPhone = phones.HOME
+            additionalPhoneType = 'HOME'
+            hasAdditionalPhone = true
+          }
+          
+          // If primary phone is not set but we have phones, use the first available
+          if (!primaryPhone && phones.MOBILE) {
+            primaryPhone = phones.MOBILE
+            primaryPhoneType = 'MOBILE'
+            // Check for additional
+            if (phones.HOME) {
+              additionalPhone = phones.HOME
+              additionalPhoneType = 'HOME'
+              hasAdditionalPhone = true
+            } else if (phones.WORK) {
+              additionalPhone = phones.WORK
+              additionalPhoneType = 'WORK'
+              hasAdditionalPhone = true
+            }
+          } else if (!primaryPhone && phones.HOME) {
+            primaryPhone = phones.HOME
+            primaryPhoneType = 'HOME'
+            if (phones.WORK) {
+              additionalPhone = phones.WORK
+              additionalPhoneType = 'WORK'
+              hasAdditionalPhone = true
+            }
+          } else if (!primaryPhone && phones.WORK) {
+            primaryPhone = phones.WORK
+            primaryPhoneType = 'WORK'
+          }
+          
           const loadedData = {
-            // Personal Information
+            // Personal Information (from borrower-info-1)
             firstName: borrower.firstName || '',
             middleName: borrower.middleName || '',
             lastName: borrower.lastName || '',
             suffix: borrower.suffix || '',
+            email: borrower.email || '',
+            phone: primaryPhone, // Primary phone from borrower-info-1
+            phoneType: primaryPhoneType, // Phone type from borrower-info-1
             ssn: borrower.ssn || borrower.taxpayerIdentifierValue || '',
             dateOfBirth: borrower.dateOfBirth || borrower.birthDate || '',
             
-            // Contact Information
-            email: borrower.email || '',
-            homePhone: borrower.homePhone ? formatPhoneNumber(borrower.homePhone) : '',
-            mobilePhone: borrower.phone && borrower.phoneType === 'MOBILE' ? formatPhoneNumber(borrower.phone) : '',
-            workPhone: borrower.workPhone ? formatPhoneNumber(borrower.workPhone) : '',
-            workPhoneExt: borrower.workPhoneExt || borrower.workPhoneExtension || '',
+            // Contact Information (additional phone)
             preferredContactMethod: borrower.preferredContactMethod || 'EMAIL',
+            hasAdditionalPhone: hasAdditionalPhone,
+            additionalPhone: additionalPhone,
+            additionalPhoneType: additionalPhoneType,
+            workPhoneExt: (hasAdditionalPhone && additionalPhoneType === 'WORK') ? (borrower.workPhoneExt || borrower.workPhoneExtension || '') : '',
             
             // Current Address
             currentAddress: borrower.currentAddress || borrower.currentResidence?.fullAddress || '',
@@ -187,50 +312,68 @@ export default function BorrowerEditPage() {
             currentAddressCity: currentAddressParts.city,
             currentAddressState: currentAddressParts.state,
             currentAddressZip: currentAddressParts.zip,
-            yearsAtCurrentAddress: borrower.yearsAtCurrentAddress || '',
-            monthsAtCurrentAddress: borrower.monthsAtCurrentAddress || '',
+            // Calculate move-in date from years/months (if available)
+            moveInDateCurrent: calculateMoveInDateFromDuration(
+              borrower.yearsAtCurrentAddress || '',
+              borrower.monthsAtCurrentAddress || ''
+            ),
             housingStatus: borrower.housingStatus || '',
+            sameAsMailing: borrower.sameAsMailing !== undefined ? borrower.sameAsMailing : true, // From borrower-info-2
             
-            // Previous Address
-            hasPreviousAddress: false, // Will be determined based on years/months
-            previousAddress: borrower.previousAddress || '',
-            previousAddressStreet: '',
-            previousAddressCity: '',
-            previousAddressState: '',
-            previousAddressZip: '',
-            yearsAtPreviousAddress: borrower.yearsAtPreviousAddress || '',
-            monthsAtPreviousAddress: borrower.monthsAtPreviousAddress || '',
-            previousHousingStatus: borrower.previousHousingStatus || '',
+            // Previous Addresses - convert from years/months to move-in dates
+            // For now, support single previous address (can be extended to array later)
+            previousAddresses: borrower.previousAddress ? [{
+              address: borrower.previousAddress || '',
+              addressStreet: borrower.previousAddressStreet || '',
+              addressCity: borrower.previousAddressCity || '',
+              addressState: borrower.previousAddressState || '',
+              addressZip: borrower.previousAddressZip || '',
+              moveInDate: calculateMoveInDateFromDuration(
+                borrower.yearsAtPreviousAddress || '',
+                borrower.monthsAtPreviousAddress || ''
+              ),
+              moveOutDate: calculateMoveInDateFromDuration(
+                borrower.yearsAtCurrentAddress || '',
+                borrower.monthsAtCurrentAddress || ''
+              ) || '', // Move-out date should be the current move-in date
+              housingStatus: borrower.previousHousingStatus || '',
+            }] : [],
             
             // Citizenship & Residency
             citizenshipType: borrower.citizenshipType || borrower.citizenshipResidencyType || '',
             alienRegistrationNumber: borrower.alienRegistrationNumber || '',
             
-            // Marital Status
+            // Marital Status (from borrower-info-2)
             maritalStatus: borrower.maritalStatus || '',
             
             // Dependents
             dependentCount: borrower.dependentCount?.toString() || '',
             dependentAges: borrower.dependentAges || '',
             
-            // Military Status
+            // Military Status (from borrower-info-2)
             isVeteran: borrower.isVeteran || borrower.militaryServiceStatus || false,
             
-            // Consents
+            // Consents (from borrower-info-2)
             acceptTerms: borrower.acceptTerms || borrower.consentToCreditCheck || false,
             consentToContact: borrower.consentToContact || false,
           }
           
-          // Determine if previous address should be shown
-          const totalMonths = (parseInt(loadedData.yearsAtCurrentAddress || '0') * 12) + parseInt(loadedData.monthsAtCurrentAddress || '0')
-          loadedData.hasPreviousAddress = totalMonths < 24
+          // Previous addresses will be shown dynamically based on moveInDateCurrent
           
+          console.log('BorrowerEdit: Setting form data:', loadedData)
           setFormData(loadedData)
           resetInitialData(loadedData)
+        } else {
+          console.warn('BorrowerEdit: No borrower data found in application')
         }
       } catch (error: any) {
+        console.error('BorrowerEdit: Failed to load borrower data:', error)
         if (error.response?.status !== 401) {
-          console.error('Failed to load borrower data:', error)
+          console.error('BorrowerEdit: Error details:', {
+            message: error.message,
+            status: error.response?.status,
+            data: error.response?.data,
+          })
         }
       } finally {
         setIsLoading(false)
@@ -238,7 +381,7 @@ export default function BorrowerEditPage() {
     }
 
     loadExistingData()
-  }, [searchParams, appState.dealId])
+  }, [searchParams?.get('applicationId'), appState.dealId])
   
   // Auto-focus first field
   useEffect(() => {
@@ -283,11 +426,20 @@ export default function BorrowerEditPage() {
 
   const handlePreviousAddressSave = (addressData: AddressData) => {
     const formattedAddress = `${addressData.street}, ${addressData.city}, ${addressData.state} ${addressData.zipCode}`
-    handleInputChange('previousAddress', formattedAddress)
-    handleInputChange('previousAddressStreet', addressData.street)
-    handleInputChange('previousAddressCity', addressData.city)
-    handleInputChange('previousAddressState', addressData.state)
-    handleInputChange('previousAddressZip', addressData.zipCode)
+    if (editingPreviousAddressIndex !== null) {
+      // Update the specific previous address in the array
+      const updated = [...formData.previousAddresses]
+      updated[editingPreviousAddressIndex] = {
+        ...updated[editingPreviousAddressIndex],
+        address: formattedAddress,
+        addressStreet: addressData.street,
+        addressCity: addressData.city,
+        addressState: addressData.state,
+        addressZip: addressData.zipCode,
+      }
+      handleInputChange('previousAddresses', updated)
+      setEditingPreviousAddressIndex(null)
+    }
     setIsPreviousAddressModalOpen(false)
   }
 
@@ -305,14 +457,72 @@ export default function BorrowerEditPage() {
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Please enter a valid email address'
     }
-    if (!formData.mobilePhone.trim() && !formData.homePhone.trim() && !formData.workPhone.trim()) {
-      newErrors.mobilePhone = 'At least one phone number is required'
+    // Validate primary phone (from borrower-info-1) - required
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Phone number is required'
+    }
+    if (!formData.phoneType.trim()) {
+      newErrors.phoneType = 'Phone type is required'
+    }
+    // Validate additional phone if hasAdditionalPhone is true
+    if (formData.hasAdditionalPhone) {
+      if (!formData.additionalPhone.trim()) {
+        newErrors.additionalPhone = 'Additional phone number is required'
+      }
+      if (!formData.additionalPhoneType.trim()) {
+        newErrors.additionalPhoneType = 'Additional phone type is required'
+      }
+      // Ensure additional phone type is different from primary
+      if (formData.additionalPhoneType === formData.phoneType) {
+        newErrors.additionalPhoneType = 'Additional phone type must be different from primary phone type'
+      }
     }
     if (!formData.currentAddress.trim()) {
       newErrors.currentAddress = 'Current Address is required'
     }
-    if (formData.hasPreviousAddress && !formData.previousAddress.trim()) {
-      newErrors.previousAddress = 'Previous Address is required if you have lived at current address less than 2 years'
+    // Validate move-in date for current address
+    if (!formData.moveInDateCurrent.trim()) {
+      newErrors.moveInDateCurrent = 'Move-in date is required'
+    }
+    
+    // Validate previous addresses if needed (less than 2 years at current address)
+    const currentDuration = calculateDurationFromMoveInDate(formData.moveInDateCurrent)
+    const totalMonthsAtCurrent = (currentDuration.years * 12) + currentDuration.months
+    const needsPreviousAddresses = totalMonthsAtCurrent < 24
+    
+    if (needsPreviousAddresses) {
+      // Calculate total months covered by previous addresses
+      let totalPreviousMonths = 0
+      formData.previousAddresses.forEach((prev, index) => {
+        if (!prev.address.trim()) {
+          newErrors[`previousAddress_${index}`] = 'Previous address is required'
+        }
+        if (!prev.moveInDate) {
+          newErrors[`previousMoveInDate_${index}`] = 'Move-in date is required'
+        }
+        if (!prev.moveOutDate) {
+          newErrors[`previousMoveOutDate_${index}`] = 'Move-out date is required'
+        }
+        
+        // Validate date order
+        if (prev.moveInDate && prev.moveOutDate && new Date(prev.moveInDate) >= new Date(prev.moveOutDate)) {
+          newErrors[`previousMoveOutDate_${index}`] = 'Move-out date must be after move-in date'
+        }
+        
+        // Calculate duration for this previous address
+        if (prev.moveInDate && prev.moveOutDate) {
+          const moveIn = new Date(prev.moveInDate)
+          const moveOut = new Date(prev.moveOutDate)
+          const diffMonths = Math.floor((moveOut.getTime() - moveIn.getTime()) / (1000 * 60 * 60 * 24 * 30.44))
+          totalPreviousMonths += diffMonths
+        }
+      })
+      
+      // Check if we need more previous addresses
+      const remainingMonths = 24 - totalMonthsAtCurrent - totalPreviousMonths
+      if (remainingMonths > 0 && formData.previousAddresses.length === 0) {
+        newErrors.previousAddress = 'Previous address is required if you have lived at current address less than 2 years'
+      }
     }
     if (!formData.maritalStatus) {
       newErrors.maritalStatus = 'Marital Status is required'
@@ -343,9 +553,10 @@ export default function BorrowerEditPage() {
     setErrors({})
 
     try {
-      if (hasChanges) {
+      // Always save if form is submitted (not just when hasChanges is true)
+      // This ensures all data including previous addresses are saved
+      if (true) { // Changed from hasChanges to always save
         const { streetAddress, city, state, zipCode } = parseAddress(formData.currentAddress)
-        const previousAddressParts = formData.hasPreviousAddress ? parseAddress(formData.previousAddress) : null
 
         const saveData = {
           borrower: {
@@ -358,12 +569,15 @@ export default function BorrowerEditPage() {
             taxpayerIdentifierValue: formData.ssn || undefined,
             dateOfBirth: formData.dateOfBirth || undefined,
             
-            // Contact Information
+            // Contact Information (from borrower-info-1)
             email: formData.email,
-            homePhone: formData.homePhone ? parsePhoneNumber(formData.homePhone) : undefined,
-            mobilePhone: formData.mobilePhone ? parsePhoneNumber(formData.mobilePhone) : undefined,
-            workPhone: formData.workPhone ? parsePhoneNumber(formData.workPhone) : undefined,
-            workPhoneExt: formData.workPhoneExt || undefined,
+            phone: formData.phone ? parsePhoneNumber(formData.phone) : undefined,
+            phoneType: formData.phoneType || 'MOBILE',
+            // Additional phone (if provided)
+            homePhone: formData.hasAdditionalPhone && formData.additionalPhoneType === 'HOME' ? parsePhoneNumber(formData.additionalPhone) : undefined,
+            mobilePhone: formData.hasAdditionalPhone && formData.additionalPhoneType === 'MOBILE' ? parsePhoneNumber(formData.additionalPhone) : undefined,
+            workPhone: formData.hasAdditionalPhone && formData.additionalPhoneType === 'WORK' ? parsePhoneNumber(formData.additionalPhone) : undefined,
+            workPhoneExt: formData.hasAdditionalPhone && formData.additionalPhoneType === 'WORK' ? (formData.workPhoneExt || undefined) : undefined,
             preferredContactMethod: formData.preferredContactMethod,
             
             // Current Address
@@ -372,18 +586,47 @@ export default function BorrowerEditPage() {
             state: state,
             zipCode: zipCode,
             currentAddress: formData.currentAddress,
-            yearsAtCurrentAddress: formData.yearsAtCurrentAddress ? parseInt(formData.yearsAtCurrentAddress) : undefined,
-            monthsAtCurrentAddress: formData.monthsAtCurrentAddress ? parseInt(formData.monthsAtCurrentAddress) : undefined,
+            // Convert move-in date to years/months for backend
+            yearsAtCurrentAddress: (() => {
+              const duration = calculateDurationFromMoveInDate(formData.moveInDateCurrent)
+              return duration.years > 0 ? duration.years : undefined
+            })(),
+            monthsAtCurrentAddress: (() => {
+              const duration = calculateDurationFromMoveInDate(formData.moveInDateCurrent)
+              return duration.months > 0 ? duration.months : undefined
+            })(),
             housingStatus: formData.housingStatus || undefined,
+            sameAsMailing: formData.sameAsMailing, // From borrower-info-2
             
-            // Previous Address
-            previousAddress: previousAddressParts ? previousAddressParts.streetAddress : undefined,
-            previousAddressCity: previousAddressParts ? previousAddressParts.city : undefined,
-            previousAddressState: previousAddressParts ? previousAddressParts.state : undefined,
-            previousAddressZip: previousAddressParts ? previousAddressParts.zipCode : undefined,
-            yearsAtPreviousAddress: formData.yearsAtPreviousAddress ? parseInt(formData.yearsAtPreviousAddress) : undefined,
-            monthsAtPreviousAddress: formData.monthsAtPreviousAddress ? parseInt(formData.monthsAtPreviousAddress) : undefined,
-            previousHousingStatus: formData.previousHousingStatus || undefined,
+            // Previous Addresses - convert move-in dates to years/months for backend
+            // For now, send the first previous address (backend may need to be updated to support array)
+            previousAddress: formData.previousAddresses.length > 0 ? formData.previousAddresses[0].addressStreet : undefined,
+            previousAddressCity: formData.previousAddresses.length > 0 ? formData.previousAddresses[0].addressCity : undefined,
+            previousAddressState: formData.previousAddresses.length > 0 ? formData.previousAddresses[0].addressState : undefined,
+            previousAddressZip: formData.previousAddresses.length > 0 ? formData.previousAddresses[0].addressZip : undefined,
+            yearsAtPreviousAddress: formData.previousAddresses.length > 0 ? (() => {
+              const prev = formData.previousAddresses[0]
+              if (prev.moveInDate && prev.moveOutDate) {
+                const moveIn = new Date(prev.moveInDate)
+                const moveOut = new Date(prev.moveOutDate)
+                const diffMonths = Math.floor((moveOut.getTime() - moveIn.getTime()) / (1000 * 60 * 60 * 24 * 30.44))
+                const years = Math.floor(diffMonths / 12)
+                return years > 0 ? years : undefined
+              }
+              return undefined
+            })() : undefined,
+            monthsAtPreviousAddress: formData.previousAddresses.length > 0 ? (() => {
+              const prev = formData.previousAddresses[0]
+              if (prev.moveInDate && prev.moveOutDate) {
+                const moveIn = new Date(prev.moveInDate)
+                const moveOut = new Date(prev.moveOutDate)
+                const diffMonths = Math.floor((moveOut.getTime() - moveIn.getTime()) / (1000 * 60 * 60 * 24 * 30.44))
+                const months = diffMonths % 12
+                return months > 0 ? months : undefined
+              }
+              return undefined
+            })() : undefined,
+            previousHousingStatus: formData.previousAddresses.length > 0 ? formData.previousAddresses[0].housingStatus || undefined : undefined,
             
             // Citizenship & Residency
             citizenshipType: formData.citizenshipType,
@@ -394,7 +637,7 @@ export default function BorrowerEditPage() {
             maritalStatus: formData.maritalStatus,
             
             // Dependents
-            dependentCount: formData.dependentCount ? parseInt(formData.dependentCount) : undefined,
+            dependentCount: formData.dependentCount || undefined, // Send as string, backend will parse
             dependentAges: formData.dependentAges || undefined,
             
             // Military Status
@@ -408,13 +651,18 @@ export default function BorrowerEditPage() {
           },
         }
 
+        console.log('BorrowerEdit: Saving application data:', { applicationId, saveData })
         const response = await urlaApi.saveApplication(applicationId, saveData)
+        console.log('BorrowerEdit: Save response:', response)
         
         if (response.data) {
           appState.syncFromApi(response.data)
         }
         
         resetInitialData(formData)
+        console.log('BorrowerEdit: Save completed successfully')
+      } else {
+        console.log('BorrowerEdit: Skipping save (hasChanges check)')
       }
 
       // Navigate back to review page
@@ -438,17 +686,44 @@ export default function BorrowerEditPage() {
   }
 
   const handleBack = () => {
-    const applicationId = searchParams?.get('applicationId') || appState.dealId
+    const applicationId = searchParams?.get('applicationId') || appState.dealId || sessionStorage.getItem('applicationId')
+    console.log('BorrowerEdit: Back button clicked, applicationId:', applicationId)
+    // Go back to GettingStartedSummary (review page)
     if (applicationId) {
       router.push(`/application/review?applicationId=${applicationId}`)
     } else {
-      router.push('/application/review')
+      // Fallback: try to get from sessionStorage
+      const storedAppId = sessionStorage.getItem('applicationId')
+      if (storedAppId) {
+        router.push(`/application/review?applicationId=${storedAppId}`)
+      } else {
+        router.push('/application/review')
+      }
     }
   }
 
   // Calculate total months at current address to determine if previous address is needed
-  const totalMonthsAtCurrent = (parseInt(formData.yearsAtCurrentAddress || '0') * 12) + parseInt(formData.monthsAtCurrentAddress || '0')
-  const showPreviousAddress = totalMonthsAtCurrent < 24 || formData.hasPreviousAddress
+  const currentDuration = calculateDurationFromMoveInDate(formData.moveInDateCurrent)
+  const totalMonthsAtCurrent = (currentDuration.years * 12) + currentDuration.months
+  const needsPreviousAddresses = totalMonthsAtCurrent < 24
+  
+  // Calculate how many months we need to cover with previous addresses
+  const remainingMonths = Math.max(0, 24 - totalMonthsAtCurrent)
+  
+  // Calculate total months covered by existing previous addresses
+  let totalPreviousMonths = 0
+  formData.previousAddresses.forEach((prev) => {
+    if (prev.moveInDate && prev.moveOutDate) {
+      const moveIn = new Date(prev.moveInDate)
+      const moveOut = new Date(prev.moveOutDate)
+      const diffMonths = Math.floor((moveOut.getTime() - moveIn.getTime()) / (1000 * 60 * 60 * 24 * 30.44))
+      totalPreviousMonths += diffMonths
+    }
+  })
+  
+  // Determine if we need more previous addresses
+  const stillNeedsMore = remainingMonths > totalPreviousMonths
+  const showPreviousAddresses = needsPreviousAddresses && (formData.previousAddresses.length > 0 || stillNeedsMore)
 
   if (isLoading) {
     return (
@@ -617,59 +892,79 @@ export default function BorrowerEditPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="mobilePhone" className="text-sm font-medium text-gray-700">
-                Mobile Phone
-              </Label>
-              <PhoneInput
-                id="mobilePhone"
-                name="mobilePhone"
-                value={formData.mobilePhone}
-                onChange={(value) => handleInputChange('mobilePhone', value)}
-                className={`mt-1 ${errors.mobilePhone ? 'border-red-500' : ''}`}
-                required={false}
-                showPhoneType={false}
-              />
-              {errors.mobilePhone && (
-                <p className="mt-1 text-sm text-red-500">{errors.mobilePhone}</p>
-              )}
-            </div>
+          {/* Primary Phone (from borrower-info-1) */}
+          <div>
+            <PhoneInput
+              id="phone"
+              name="phone"
+              value={formData.phone}
+              onChange={(value) => handleInputChange('phone', value)}
+              onPhoneTypeChange={(value) => handleInputChange('phoneType', value)}
+              phoneType={formData.phoneType}
+              label="Phone number"
+              required={true}
+              error={errors.phone}
+              showPhoneType={true}
+            />
+            {errors.phone && (
+              <p className="mt-1 text-sm text-red-500">{errors.phone}</p>
+            )}
+            {errors.phoneType && (
+              <p className="mt-1 text-sm text-red-500">{errors.phoneType}</p>
+            )}
+          </div>
 
-            <div>
-              <Label htmlFor="homePhone" className="text-sm font-medium text-gray-700">
-                Home Phone
-              </Label>
-              <PhoneInput
-                id="homePhone"
-                name="homePhone"
-                value={formData.homePhone}
-                onChange={(value) => handleInputChange('homePhone', value)}
-                className="mt-1"
-                required={false}
-                showPhoneType={false}
-              />
-            </div>
+          {/* Additional Phone Question */}
+          <div className="flex items-center space-x-3 py-2">
+            <Switch
+              id="hasAdditionalPhone"
+              checked={formData.hasAdditionalPhone}
+              onCheckedChange={(checked) => {
+                handleInputChange('hasAdditionalPhone', checked)
+                if (!checked) {
+                  // Clear additional phone when unchecked
+                  handleInputChange('additionalPhone', '')
+                  handleInputChange('additionalPhoneType', '')
+                  handleInputChange('workPhoneExt', '')
+                }
+              }}
+            />
+            <Label htmlFor="hasAdditionalPhone" className="text-sm font-medium text-gray-700 cursor-pointer">
+              Do you want to add another phone number?
+            </Label>
+          </div>
 
-            <div>
-              <Label htmlFor="workPhone" className="text-sm font-medium text-gray-700">
-                Work Phone
-              </Label>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="col-span-2">
-                  <PhoneInput
-                    id="workPhone"
-                    name="workPhone"
-                    value={formData.workPhone}
-                    onChange={(value) => handleInputChange('workPhone', value)}
-                    className="mt-1"
-                    required={false}
-                    showPhoneType={false}
-                  />
-                </div>
+          {/* Additional Phone Input (shown if hasAdditionalPhone is true) */}
+          {formData.hasAdditionalPhone && (
+            <div className="space-y-4 pl-4 border-l-2 border-gray-200">
+              <div>
+                <PhoneInput
+                  id="additionalPhone"
+                  name="additionalPhone"
+                  value={formData.additionalPhone}
+                  onChange={(value) => handleInputChange('additionalPhone', value)}
+                  onPhoneTypeChange={(value) => handleInputChange('additionalPhoneType', value)}
+                  phoneType={formData.additionalPhoneType}
+                  label="Additional Phone Number"
+                  required={formData.hasAdditionalPhone}
+                  error={errors.additionalPhone}
+                  showPhoneType={true}
+                  // Filter out the primary phone type from options
+                  excludePhoneTypes={[formData.phoneType]}
+                />
+                {errors.additionalPhone && (
+                  <p className="mt-1 text-sm text-red-500">{errors.additionalPhone}</p>
+                )}
+                {errors.additionalPhoneType && (
+                  <p className="mt-1 text-sm text-red-500">{errors.additionalPhoneType}</p>
+                )}
+              </div>
+
+              {/* Work Phone Extension (only shown if additional phone type is WORK) */}
+              {formData.additionalPhoneType === 'WORK' && (
                 <div>
                   <Label htmlFor="workPhoneExt" className="text-sm font-medium text-gray-700">
-                    Ext
+                    Extension
                   </Label>
                   <Input
                     id="workPhoneExt"
@@ -679,27 +974,32 @@ export default function BorrowerEditPage() {
                     onChange={(e) => handleInputChange('workPhoneExt', e.target.value)}
                     className="mt-1"
                     placeholder="Ext"
+                    maxLength={10}
                   />
                 </div>
-              </div>
+              )}
             </div>
+          )}
 
-            <div>
-              <Label htmlFor="preferredContactMethod" className="text-sm font-medium text-gray-700">
-                Preferred Contact Method
-              </Label>
-              <Select
-                id="preferredContactMethod"
-                value={formData.preferredContactMethod}
-                onValueChange={(value) => handleInputChange('preferredContactMethod', value)}
-                className="mt-1"
-              >
-                <option value="EMAIL">Email</option>
-                <option value="MOBILE">Mobile Phone</option>
-                <option value="HOME">Home Phone</option>
-                <option value="WORK">Work Phone</option>
-              </Select>
-            </div>
+          {/* Preferred Contact Method */}
+          <div>
+            <Label htmlFor="preferredContactMethod" className="text-sm font-medium text-gray-700">
+              Preferred Contact Method
+            </Label>
+            <Select
+              id="preferredContactMethod"
+              value={formData.preferredContactMethod}
+              onValueChange={(value) => handleInputChange('preferredContactMethod', value)}
+              className="mt-1"
+            >
+              <option value="EMAIL">Email</option>
+              {formData.phone && formData.phoneType === 'MOBILE' && <option value="MOBILE">Mobile Phone</option>}
+              {formData.phone && formData.phoneType === 'HOME' && <option value="HOME">Home Phone</option>}
+              {formData.phone && formData.phoneType === 'WORK' && <option value="WORK">Work Phone</option>}
+              {formData.hasAdditionalPhone && formData.additionalPhoneType === 'MOBILE' && <option value="MOBILE">Mobile Phone</option>}
+              {formData.hasAdditionalPhone && formData.additionalPhoneType === 'HOME' && <option value="HOME">Home Phone</option>}
+              {formData.hasAdditionalPhone && formData.additionalPhoneType === 'WORK' && <option value="WORK">Work Phone</option>}
+            </Select>
           </div>
         </div>
 
@@ -738,36 +1038,44 @@ export default function BorrowerEditPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="yearsAtCurrentAddress" className="text-sm font-medium text-gray-700">
-                Years at Current Address
+              <Label htmlFor="moveInDateCurrent" className="text-sm font-medium text-gray-700">
+                Move-in Date <span className="text-red-500">*</span>
               </Label>
               <Input
-                id="yearsAtCurrentAddress"
-                name="yearsAtCurrentAddress"
-                type="number"
-                min="0"
-                value={formData.yearsAtCurrentAddress}
-                onChange={(e) => handleInputChange('yearsAtCurrentAddress', e.target.value)}
-                className="mt-1"
+                id="moveInDateCurrent"
+                name="moveInDateCurrent"
+                type="date"
+                required
+                value={formData.moveInDateCurrent}
+                onChange={(e) => {
+                  handleInputChange('moveInDateCurrent', e.target.value)
+                  // Auto-calculate move-out date for previous addresses when current move-in date changes
+                  if (formData.previousAddresses.length > 0) {
+                    const updatedAddresses = formData.previousAddresses.map((prev, index) => {
+                      if (index === 0 && !prev.moveOutDate) {
+                        return { ...prev, moveOutDate: e.target.value }
+                      }
+                      return prev
+                    })
+                    handleInputChange('previousAddresses', updatedAddresses)
+                  }
+                }}
+                className={`mt-1 ${errors.moveInDateCurrent ? 'border-red-500' : ''}`}
+                max={new Date().toISOString().split('T')[0]} // Cannot be in the future
               />
-            </div>
-
-            <div>
-              <Label htmlFor="monthsAtCurrentAddress" className="text-sm font-medium text-gray-700">
-                Months at Current Address
-              </Label>
-              <Input
-                id="monthsAtCurrentAddress"
-                name="monthsAtCurrentAddress"
-                type="number"
-                min="0"
-                max="11"
-                value={formData.monthsAtCurrentAddress}
-                onChange={(e) => handleInputChange('monthsAtCurrentAddress', e.target.value)}
-                className="mt-1"
-              />
+              {errors.moveInDateCurrent && (
+                <p className="mt-1 text-sm text-red-500">{errors.moveInDateCurrent}</p>
+              )}
+              {formData.moveInDateCurrent && (
+                <p className="mt-1 text-xs text-gray-500">
+                  {(() => {
+                    const duration = calculateDurationFromMoveInDate(formData.moveInDateCurrent)
+                    return `Duration: ${duration.years} year${duration.years !== 1 ? 's' : ''}, ${duration.months} month${duration.months !== 1 ? 's' : ''}`
+                  })()}
+                </p>
+              )}
             </div>
 
             <div>
@@ -787,93 +1095,190 @@ export default function BorrowerEditPage() {
               </Select>
             </div>
           </div>
+
+          {/* Same as Mailing Address (from borrower-info-2) */}
+          <div className="flex items-center space-x-3 py-2">
+            <Switch
+              id="sameAsMailing"
+              checked={formData.sameAsMailing}
+              onCheckedChange={(checked) => handleInputChange('sameAsMailing', checked)}
+            />
+            <Label htmlFor="sameAsMailing" className="text-sm font-medium text-gray-700 cursor-pointer">
+              Same as mailing address
+            </Label>
+          </div>
         </div>
 
-        {/* Previous Address Section (conditional) */}
-        {showPreviousAddress && (
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Previous Address</h3>
+        {/* Previous Addresses Section (conditional - shown until 2 years is covered) */}
+        {showPreviousAddresses && (
+          <div className="space-y-6">
+            <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+              Previous Address{formData.previousAddresses.length !== 1 ? 'es' : ''}
+              {stillNeedsMore && <span className="text-red-500 ml-2">*</span>}
+            </h3>
             
-            <div>
-              <Label htmlFor="previousAddress" className="text-sm font-medium text-gray-700">
-                Previous Address {showPreviousAddress && <span className="text-red-500">*</span>}
-              </Label>
-              <div className="mt-1 flex items-center gap-2">
-                <Input
-                  id="previousAddress"
-                  name="previousAddress"
-                  type="text"
-                  required={showPreviousAddress}
-                  value={formData.previousAddress}
-                  onClick={() => setIsPreviousAddressModalOpen(true)}
-                  readOnly
-                  className={`flex-1 ${errors.previousAddress ? 'border-red-500' : ''}`}
-                  placeholder="Click to enter address"
-                />
+            {formData.previousAddresses.map((prev, index) => {
+              const prevDuration = prev.moveInDate && prev.moveOutDate 
+                ? calculateDurationFromMoveInDate(prev.moveInDate)
+                : { years: 0, months: 0 }
+              const prevMonths = (prevDuration.years * 12) + prevDuration.months
+              
+              return (
+                <div key={index} className="space-y-4 p-4 border border-gray-200 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-md font-medium text-gray-800">Previous Address {index + 1}</h4>
+                    {formData.previousAddresses.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const updated = formData.previousAddresses.filter((_, i) => i !== index)
+                          handleInputChange('previousAddresses', updated)
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">
+                      Address <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="mt-1 flex items-center gap-2">
+                      <Input
+                        type="text"
+                        required
+                        value={prev.address}
+                        onClick={() => {
+                          setIsPreviousAddressModalOpen(true)
+                          setEditingPreviousAddressIndex(index)
+                        }}
+                        readOnly
+                        className={`flex-1 ${errors[`previousAddress_${index}`] ? 'border-red-500' : ''}`}
+                        placeholder="Click to enter address"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setIsPreviousAddressModalOpen(true)
+                          setEditingPreviousAddressIndex(index)
+                        }}
+                        className="px-4"
+                      >
+                        <MapPin className="w-4 h-4 mr-2" />
+                        Address
+                      </Button>
+                    </div>
+                    {errors[`previousAddress_${index}`] && (
+                      <p className="mt-1 text-sm text-red-500">{errors[`previousAddress_${index}`]}</p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">
+                        Move-in Date <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        type="date"
+                        required
+                        value={prev.moveInDate}
+                        onChange={(e) => {
+                          const updated = [...formData.previousAddresses]
+                          updated[index] = { ...updated[index], moveInDate: e.target.value }
+                          handleInputChange('previousAddresses', updated)
+                        }}
+                        className={`mt-1 ${errors[`previousMoveInDate_${index}`] ? 'border-red-500' : ''}`}
+                        max={prev.moveOutDate || formData.moveInDateCurrent || new Date().toISOString().split('T')[0]}
+                      />
+                      {errors[`previousMoveInDate_${index}`] && (
+                        <p className="mt-1 text-sm text-red-500">{errors[`previousMoveInDate_${index}`]}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">
+                        Move-out Date <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        type="date"
+                        required
+                        value={prev.moveOutDate}
+                        onChange={(e) => {
+                          const updated = [...formData.previousAddresses]
+                          updated[index] = { ...updated[index], moveOutDate: e.target.value }
+                          handleInputChange('previousAddresses', updated)
+                        }}
+                        className={`mt-1 ${errors[`previousMoveOutDate_${index}`] ? 'border-red-500' : ''}`}
+                        min={prev.moveInDate}
+                        max={formData.moveInDateCurrent || new Date().toISOString().split('T')[0]}
+                      />
+                      {errors[`previousMoveOutDate_${index}`] && (
+                        <p className="mt-1 text-sm text-red-500">{errors[`previousMoveOutDate_${index}`]}</p>
+                      )}
+                      {prev.moveInDate && prev.moveOutDate && (
+                        <p className="mt-1 text-xs text-gray-500">
+                          Duration: {prevDuration.years} year{prevDuration.years !== 1 ? 's' : ''}, {prevDuration.months} month{prevDuration.months !== 1 ? 's' : ''}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">
+                        Housing Status
+                      </Label>
+                      <Select
+                        value={prev.housingStatus}
+                        onValueChange={(value) => {
+                          const updated = [...formData.previousAddresses]
+                          updated[index] = { ...updated[index], housingStatus: value }
+                          handleInputChange('previousAddresses', updated)
+                        }}
+                        className="mt-1"
+                      >
+                        <option value="">Select</option>
+                        <option value="Own">Own</option>
+                        <option value="Rent">Rent</option>
+                        <option value="Other">Other</option>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+            
+            {stillNeedsMore && (
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">
+                  <strong>Additional address required:</strong> You need to provide {remainingMonths - totalPreviousMonths} more month{remainingMonths - totalPreviousMonths !== 1 ? 's' : ''} of address history to cover the 2-year requirement.
+                </p>
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setIsPreviousAddressModalOpen(true)}
-                  className="px-4"
+                  onClick={() => {
+                    const newAddress = {
+                      address: '',
+                      addressStreet: '',
+                      addressCity: '',
+                      addressState: '',
+                      addressZip: '',
+                      moveInDate: '',
+                      moveOutDate: formData.previousAddresses.length > 0 
+                        ? formData.previousAddresses[formData.previousAddresses.length - 1].moveInDate 
+                        : formData.moveInDateCurrent || '',
+                      housingStatus: '',
+                    }
+                    handleInputChange('previousAddresses', [...formData.previousAddresses, newAddress])
+                  }}
+                  className="mt-2"
                 >
-                  <MapPin className="w-4 h-4 mr-2" />
-                  Address
+                  Add Another Previous Address
                 </Button>
               </div>
-              {errors.previousAddress && (
-                <p className="mt-1 text-sm text-red-500">{errors.previousAddress}</p>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <Label htmlFor="yearsAtPreviousAddress" className="text-sm font-medium text-gray-700">
-                  Years at Previous Address
-                </Label>
-                <Input
-                  id="yearsAtPreviousAddress"
-                  name="yearsAtPreviousAddress"
-                  type="number"
-                  min="0"
-                  value={formData.yearsAtPreviousAddress}
-                  onChange={(e) => handleInputChange('yearsAtPreviousAddress', e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="monthsAtPreviousAddress" className="text-sm font-medium text-gray-700">
-                  Months at Previous Address
-                </Label>
-                <Input
-                  id="monthsAtPreviousAddress"
-                  name="monthsAtPreviousAddress"
-                  type="number"
-                  min="0"
-                  max="11"
-                  value={formData.monthsAtPreviousAddress}
-                  onChange={(e) => handleInputChange('monthsAtPreviousAddress', e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="previousHousingStatus" className="text-sm font-medium text-gray-700">
-                  Housing Status
-                </Label>
-                <Select
-                  id="previousHousingStatus"
-                  value={formData.previousHousingStatus}
-                  onValueChange={(value) => handleInputChange('previousHousingStatus', value)}
-                  className="mt-1"
-                >
-                  <option value="">Select</option>
-                  <option value="Own">Own</option>
-                  <option value="Rent">Rent</option>
-                  <option value="Other">Other</option>
-                </Select>
-              </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -1062,13 +1467,24 @@ export default function BorrowerEditPage() {
 
       <AddressModal
         isOpen={isPreviousAddressModalOpen}
-        onClose={() => setIsPreviousAddressModalOpen(false)}
+        onClose={() => {
+          setIsPreviousAddressModalOpen(false)
+          setEditingPreviousAddressIndex(null)
+        }}
         onSave={handlePreviousAddressSave}
         initialData={{
-          street: formData.previousAddressStreet,
-          city: formData.previousAddressCity,
-          state: formData.previousAddressState,
-          zipCode: formData.previousAddressZip,
+          street: editingPreviousAddressIndex !== null && formData.previousAddresses[editingPreviousAddressIndex]
+            ? formData.previousAddresses[editingPreviousAddressIndex].addressStreet
+            : formData.previousAddressStreet,
+          city: editingPreviousAddressIndex !== null && formData.previousAddresses[editingPreviousAddressIndex]
+            ? formData.previousAddresses[editingPreviousAddressIndex].addressCity
+            : formData.previousAddressCity,
+          state: editingPreviousAddressIndex !== null && formData.previousAddresses[editingPreviousAddressIndex]
+            ? formData.previousAddresses[editingPreviousAddressIndex].addressState
+            : formData.previousAddressState,
+          zipCode: editingPreviousAddressIndex !== null && formData.previousAddresses[editingPreviousAddressIndex]
+            ? formData.previousAddresses[editingPreviousAddressIndex].addressZip
+            : formData.previousAddressZip,
         }}
       />
     </Form1003Layout>

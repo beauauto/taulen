@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 	"taulen/backend/internal/config"
@@ -33,17 +34,6 @@ func NewBorrowerService(cfg *config.Config) *BorrowerService {
 // Returns auth tokens and application data for seamless login
 // NOTE: 2FA is currently disabled - verification code is optional
 func (s *BorrowerService) VerifyAndCreateBorrower(req VerifyAndCreateBorrowerRequest) (*VerifyAndCreateBorrowerResponse, error) {
-	// 2FA is disabled - skip verification code check
-	// if req.VerificationCode != "" {
-	// 	valid, err := s.borrowerRepo.VerifyCode(req.Email, req.VerificationCode)
-	// 	if err != nil {
-	// 		return nil, errors.New("failed to verify code")
-	// 	}
-	// 	if !valid {
-	// 		return nil, errors.New("invalid or expired verification code")
-	// 	}
-	// }
-
 	// Check if borrower already exists by email
 	existingBorrowerByEmail, err := s.borrowerRepo.GetByEmail(req.Email)
 	if err != nil && err != sql.ErrNoRows {
@@ -169,7 +159,6 @@ func (s *BorrowerService) VerifyAndCreateBorrower(req VerifyAndCreateBorrowerReq
 				loanAmount = req.PurchasePrice
 			}
 		} else if req.EstimatedPrice > 0 {
-			// Legacy support
 			loanAmount = req.EstimatedPrice - req.DownPayment
 			if loanAmount <= 0 {
 				loanAmount = req.EstimatedPrice
@@ -202,7 +191,6 @@ func (s *BorrowerService) VerifyAndCreateBorrower(req VerifyAndCreateBorrowerReq
 
 		propertyValue = req.OutstandingBalance // Use outstanding balance as property value estimate
 	} else {
-		// Default/legacy behavior
 		loanAmount = req.EstimatedPrice - req.DownPayment
 		if loanAmount <= 0 {
 			loanAmount = req.EstimatedPrice
@@ -314,9 +302,131 @@ func (s *BorrowerService) SaveBorrowerData(dealID string, borrowerData map[strin
 
 	borrowerID := deal.PrimaryBorrowerID.String
 
-	// Extract borrower-info-2 fields only
-	// Note: firstName, lastName, email, phone, phoneType, middleName, suffix, ssn, dateOfBirth, 
-	// dependentsCount, citizenshipStatus belong to borrower-info-1 and should NOT be updated here
+	// Extract ALL borrower fields (borrower-edit form includes all fields from borrower-info-1 and borrower-info-2)
+	// Personal Information (from borrower-info-1)
+	var firstName, lastName, middleName, suffix, email, phone, phoneType, ssn, dateOfBirth, citizenshipType, dependentCount *string
+	
+	if val, ok := borrowerData["firstName"].(string); ok && val != "" {
+		firstName = &val
+	}
+	if val, ok := borrowerData["lastName"].(string); ok && val != "" {
+		lastName = &val
+	}
+	if val, ok := borrowerData["middleName"].(string); ok && val != "" {
+		middleName = &val
+	}
+	if val, ok := borrowerData["suffix"].(string); ok && val != "" {
+		suffix = &val
+	}
+	if val, ok := borrowerData["email"].(string); ok && val != "" {
+		email = &val
+	}
+	if val, ok := borrowerData["phone"].(string); ok && val != "" {
+		phone = &val
+	}
+	if val, ok := borrowerData["phoneType"].(string); ok && val != "" {
+		phoneType = &val
+	}
+	if val, ok := borrowerData["ssn"].(string); ok && val != "" {
+		ssn = &val
+	}
+	if val, ok := borrowerData["dateOfBirth"].(string); ok && val != "" {
+		dateOfBirth = &val
+	}
+	if val, ok := borrowerData["citizenshipType"].(string); ok && val != "" {
+		citizenshipType = &val
+	}
+	if val, ok := borrowerData["dependentCount"].(string); ok && val != "" {
+		dependentCount = &val
+	}
+	
+	// Additional phone fields (if provided)
+	var homePhone, mobilePhone, workPhone, workPhoneExt *string
+	if val, ok := borrowerData["homePhone"].(string); ok && val != "" {
+		homePhone = &val
+	}
+	if val, ok := borrowerData["mobilePhone"].(string); ok && val != "" {
+		mobilePhone = &val
+	}
+	if val, ok := borrowerData["workPhone"].(string); ok && val != "" {
+		workPhone = &val
+	}
+	if val, ok := borrowerData["workPhoneExt"].(string); ok && val != "" {
+		workPhoneExt = &val
+	}
+	
+	// Update borrower basic information if provided
+	// Update name fields (firstName, lastName) if provided
+	if firstName != nil || lastName != nil {
+		err = s.borrowerRepo.UpdateBorrowerName(borrowerID, firstName, lastName)
+		if err != nil {
+			log.Printf("SaveBorrowerData: Warning - failed to update borrower name: %v", err)
+		}
+	}
+	
+	// Use UpdateBorrowerDetails for middleName, suffix, maritalStatus, phone, phoneType
+	if middleName != nil || suffix != nil || phone != nil || phoneType != nil {
+		err = s.borrowerRepo.UpdateBorrowerDetails(borrowerID, middleName, suffix, nil, phone, phoneType)
+		if err != nil {
+			log.Printf("SaveBorrowerData: Warning - failed to update borrower details: %v", err)
+		}
+	}
+	
+	// Update additional phone fields if provided (homePhone, mobilePhone, workPhone, workPhoneExt)
+	if homePhone != nil || mobilePhone != nil || workPhone != nil || workPhoneExt != nil {
+		err = s.borrowerRepo.UpdateBorrowerAdditionalPhones(borrowerID, homePhone, mobilePhone, workPhone, workPhoneExt)
+		if err != nil {
+			log.Printf("SaveBorrowerData: Warning - failed to update borrower additional phones: %v", err)
+		}
+	}
+	
+	// Update email if provided
+	if email != nil {
+		err = s.borrowerRepo.UpdateEmail(borrowerID, *email)
+		if err != nil {
+			log.Printf("SaveBorrowerData: Warning - failed to update borrower email: %v", err)
+		}
+	}
+	
+	// Update SSN if provided
+	if ssn != nil {
+		err = s.borrowerRepo.UpdateBorrowerSSN(borrowerID, *ssn)
+		if err != nil {
+			log.Printf("SaveBorrowerData: Warning - failed to update borrower SSN: %v", err)
+		}
+	}
+	
+	// Update date of birth if provided
+	if dateOfBirth != nil {
+		birthDate, err := time.Parse("2006-01-02", *dateOfBirth)
+		if err == nil {
+			err = s.borrowerRepo.UpdateBorrowerInfo(borrowerID, &birthDate)
+			if err != nil {
+				log.Printf("SaveBorrowerData: Warning - failed to update borrower date of birth: %v", err)
+			}
+		}
+	}
+	
+	// Update citizenship if provided
+	if citizenshipType != nil {
+		err = s.borrowerRepo.UpdateBorrowerCitizenship(borrowerID, *citizenshipType)
+		if err != nil {
+			log.Printf("SaveBorrowerData: Warning - failed to update borrower citizenship: %v", err)
+		}
+	}
+	
+	// Update dependent count if provided
+	if dependentCount != nil {
+		count, err := strconv.Atoi(*dependentCount)
+		if err == nil {
+			err = s.borrowerRepo.UpdateBorrowerDependents(borrowerID, count)
+			if err != nil {
+				log.Printf("SaveBorrowerData: Warning - failed to update borrower dependents: %v", err)
+			}
+		}
+	}
+	
+	// Marital Status (from borrower-info-2)
 	var maritalStatus *string
 
 	if val, ok := borrowerData["maritalStatus"].(string); ok && val != "" {
@@ -370,6 +480,52 @@ func (s *BorrowerService) SaveBorrowerData(dealID string, borrowerData map[strin
 		err = s.borrowerRepo.UpdateOrCreateResidence(borrowerID, "BorrowerCurrentResidence", street, city, state, zipCode)
 		if err != nil {
 			return errors.New("failed to save address: " + err.Error())
+		}
+	}
+
+	// Save previous address(es) to residence table
+	// Handle previous address fields (for backward compatibility with single previous address)
+	if prevAddr, ok := borrowerData["previousAddress"].(string); ok && prevAddr != "" {
+		var prevCity, prevState, prevZip string
+		if c, ok := borrowerData["previousAddressCity"].(string); ok {
+			prevCity = c
+		}
+		if s, ok := borrowerData["previousAddressState"].(string); ok {
+			prevState = s
+		}
+		if z, ok := borrowerData["previousAddressZip"].(string); ok {
+			prevZip = z
+		}
+		
+		if prevAddr != "" && prevCity != "" && prevState != "" && prevZip != "" {
+			var prevYears, prevMonths *int
+			if y, ok := borrowerData["yearsAtPreviousAddress"].(float64); ok {
+				years := int(y)
+				prevYears = &years
+			}
+			if m, ok := borrowerData["monthsAtPreviousAddress"].(float64); ok {
+				months := int(m)
+				prevMonths = &months
+			}
+			
+			var prevHousingStatus *string
+			if h, ok := borrowerData["previousHousingStatus"].(string); ok && h != "" {
+				prevHousingStatus = &h
+			}
+			
+			// Delete existing former residences for this borrower (we'll replace with new one)
+			err = s.borrowerRepo.DeleteFormerResidences(borrowerID)
+			if err != nil {
+				log.Printf("SaveBorrowerData: Warning - failed to delete existing former residences: %v", err)
+				// Continue anyway
+			}
+			
+			// Create new former residence record
+			err = s.borrowerRepo.CreateFormerResidence(borrowerID, prevAddr, prevCity, prevState, prevZip, prevYears, prevMonths, prevHousingStatus)
+			if err != nil {
+				log.Printf("SaveBorrowerData: Warning - failed to save previous address: %v", err)
+				// Don't fail the entire operation if previous address save fails
+			}
 		}
 	}
 

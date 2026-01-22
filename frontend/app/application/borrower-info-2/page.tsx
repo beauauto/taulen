@@ -262,7 +262,7 @@ export default function BorrowerInfoPage2() {
     // Always load borrower-info-2 fields from database when form is accessed
     // This ensures data is fresh whether accessed via forward or back navigation
     loadExistingData()
-  }, [searchParams, appState.dealId])
+  }, [searchParams?.get('applicationId'), appState.dealId])
 
   // Debug: Log when formData.maritalStatus changes
   useEffect(() => {
@@ -477,8 +477,8 @@ export default function BorrowerInfoPage2() {
 
   const handleBack = () => {
     // Always go back to the previous form in the 1003 flow: borrower-info-1
-    const applicationId = searchParams?.get('applicationId') || appState.dealId
-    
+    const applicationId = searchParams?.get('applicationId') || appState.dealId || sessionStorage.getItem('applicationId')
+    console.log('BorrowerInfo2: Back button clicked, applicationId:', applicationId)
     if (applicationId) {
       router.push(`/application/borrower-info-1?applicationId=${applicationId}`)
     } else {

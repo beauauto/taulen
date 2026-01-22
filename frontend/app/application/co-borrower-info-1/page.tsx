@@ -110,7 +110,7 @@ export default function CoBorrowerInfoPage1() {
     }
 
     loadExistingData()
-  }, [searchParams, appState.dealId])
+  }, [searchParams?.get('applicationId'), appState.dealId])
   
   // Auto-focus first field when form is loaded
   useEffect(() => {
@@ -261,7 +261,8 @@ export default function CoBorrowerInfoPage1() {
 
   const handleBack = () => {
     // Go back to co-borrower-question
-    const applicationId = searchParams?.get('applicationId') || appState.dealId
+    const applicationId = searchParams?.get('applicationId') || appState.dealId || sessionStorage.getItem('applicationId')
+    console.log('CoBorrowerInfo1: Back button clicked, applicationId:', applicationId)
     if (applicationId) {
       router.push(`/application/co-borrower-question?applicationId=${applicationId}`)
     } else {

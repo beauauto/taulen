@@ -15,6 +15,30 @@ import { urlaApi } from '@/lib/api'
 import { useFormChanges } from '@/hooks/useFormChanges'
 import { useApplicationState } from '@/hooks/useApplicationState'
 
+// Helper function to calculate move-in date from years/months duration
+function calculateMoveInDateFromDuration(years: string, months: string): string {
+  if (!years && !months) return ''
+  const totalMonths = (parseInt(years || '0') * 12) + parseInt(months || '0')
+  if (totalMonths === 0) return ''
+  const today = new Date()
+  const moveInDate = new Date(today)
+  moveInDate.setMonth(moveInDate.getMonth() - totalMonths)
+  return moveInDate.toISOString().split('T')[0]
+}
+
+// Helper function to calculate duration in months from move-in date
+function calculateDurationFromMoveInDate(moveInDate: string): { years: number; months: number } {
+  if (!moveInDate) return { years: 0, months: 0 }
+  const moveIn = new Date(moveInDate)
+  const today = new Date()
+  const diffTime = today.getTime() - moveIn.getTime()
+  const diffMonths = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 30.44)) // Average days per month
+  return {
+    years: Math.floor(diffMonths / 12),
+    months: diffMonths % 12
+  }
+}
+
 export default function CoBorrowerEditPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -43,20 +67,20 @@ export default function CoBorrowerEditPage() {
     currentAddressCity: '',
     currentAddressState: '',
     currentAddressZip: '',
-    yearsAtCurrentAddress: '',
-    monthsAtCurrentAddress: '',
+    moveInDateCurrent: '', // Move-in date for current address
     housingStatus: '',
     
-    // Previous Address (if less than 2 years at current)
-    hasPreviousAddress: false,
-    previousAddress: '',
-    previousAddressStreet: '',
-    previousAddressCity: '',
-    previousAddressState: '',
-    previousAddressZip: '',
-    yearsAtPreviousAddress: '',
-    monthsAtPreviousAddress: '',
-    previousHousingStatus: '',
+    // Previous Addresses (array to support multiple addresses until 2 years is covered)
+    previousAddresses: [] as Array<{
+      address: string
+      addressStreet: string
+      addressCity: string
+      addressState: string
+      addressZip: string
+      moveInDate: string
+      moveOutDate: string
+      housingStatus: string
+    }>,
     
     // Citizenship & Residency
     citizenshipType: '',
@@ -79,6 +103,7 @@ export default function CoBorrowerEditPage() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false)
   const [isPreviousAddressModalOpen, setIsPreviousAddressModalOpen] = useState(false)
+  const [editingPreviousAddressIndex, setEditingPreviousAddressIndex] = useState<number | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   
@@ -126,23 +151,34 @@ export default function CoBorrowerEditPage() {
   // Load existing co-borrower data from database
   useEffect(() => {
     const loadExistingData = async () => {
+      setIsLoading(true)
       const applicationIdParam = searchParams?.get('applicationId')
-      const applicationId = applicationIdParam || appState.dealId
+      const applicationIdFromState = appState.dealId || sessionStorage.getItem('applicationId')
+      const applicationId = applicationIdParam || applicationIdFromState
+      
+      console.log('CoBorrowerEdit: Loading data for applicationId:', applicationId)
+      console.log('CoBorrowerEdit: applicationIdParam:', applicationIdParam)
+      console.log('CoBorrowerEdit: appState.dealId:', appState.dealId)
       
       if (applicationIdParam && !appState.dealId) {
         appState.setDealId(applicationIdParam)
+        sessionStorage.setItem('applicationId', applicationIdParam)
       }
       
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
       
       if (!applicationId || !token) {
+        console.warn('CoBorrowerEdit: Missing applicationId or token', { applicationId, hasToken: !!token })
         setIsLoading(false)
         return
       }
       
       try {
+        console.log('CoBorrowerEdit: Fetching application data from API...')
         const appResponse = await urlaApi.getApplication(applicationId)
         const appData = appResponse.data
+        
+        console.log('CoBorrowerEdit: Application data received:', appData)
         
         appState.syncFromApi(appData)
         
@@ -186,20 +222,30 @@ export default function CoBorrowerEditPage() {
             currentAddressCity: currentAddressParts.city,
             currentAddressState: currentAddressParts.state,
             currentAddressZip: currentAddressParts.zip,
-            yearsAtCurrentAddress: coBorrower.yearsAtCurrentAddress || '',
-            monthsAtCurrentAddress: coBorrower.monthsAtCurrentAddress || '',
+            // Calculate move-in date from years/months (if available)
+            moveInDateCurrent: calculateMoveInDateFromDuration(
+              coBorrower.yearsAtCurrentAddress || '',
+              coBorrower.monthsAtCurrentAddress || ''
+            ),
             housingStatus: coBorrower.housingStatus || '',
             
-            // Previous Address
-            hasPreviousAddress: false,
-            previousAddress: coBorrower.previousAddress || '',
-            previousAddressStreet: '',
-            previousAddressCity: '',
-            previousAddressState: '',
-            previousAddressZip: '',
-            yearsAtPreviousAddress: coBorrower.yearsAtPreviousAddress || '',
-            monthsAtPreviousAddress: coBorrower.monthsAtPreviousAddress || '',
-            previousHousingStatus: coBorrower.previousHousingStatus || '',
+            // Previous Addresses - convert from years/months to move-in dates
+            previousAddresses: coBorrower.previousAddress ? [{
+              address: coBorrower.previousAddress || '',
+              addressStreet: coBorrower.previousAddressStreet || '',
+              addressCity: coBorrower.previousAddressCity || '',
+              addressState: coBorrower.previousAddressState || '',
+              addressZip: coBorrower.previousAddressZip || '',
+              moveInDate: calculateMoveInDateFromDuration(
+                coBorrower.yearsAtPreviousAddress || '',
+                coBorrower.monthsAtPreviousAddress || ''
+              ),
+              moveOutDate: calculateMoveInDateFromDuration(
+                coBorrower.yearsAtCurrentAddress || '',
+                coBorrower.monthsAtCurrentAddress || ''
+              ) || '', // Move-out date should be the current move-in date
+              housingStatus: coBorrower.previousHousingStatus || '',
+            }] : [],
             
             // Citizenship & Residency
             citizenshipType: coBorrower.citizenshipType || coBorrower.citizenshipResidencyType || '',
@@ -220,15 +266,22 @@ export default function CoBorrowerEditPage() {
           }
           
           // Determine if previous address should be shown
-          const totalMonths = (parseInt(loadedData.yearsAtCurrentAddress || '0') * 12) + parseInt(loadedData.monthsAtCurrentAddress || '0')
-          loadedData.hasPreviousAddress = totalMonths < 24
+          // Previous addresses will be shown dynamically based on moveInDateCurrent
           
+          console.log('CoBorrowerEdit: Setting form data:', loadedData)
           setFormData(loadedData)
           resetInitialData(loadedData)
+        } else {
+          console.warn('CoBorrowerEdit: No co-borrower data found in application')
         }
       } catch (error: any) {
+        console.error('CoBorrowerEdit: Failed to load co-borrower data:', error)
         if (error.response?.status !== 401) {
-          console.error('Failed to load co-borrower data:', error)
+          console.error('CoBorrowerEdit: Error details:', {
+            message: error.message,
+            status: error.response?.status,
+            data: error.response?.data,
+          })
         }
       } finally {
         setIsLoading(false)
@@ -236,7 +289,7 @@ export default function CoBorrowerEditPage() {
     }
 
     loadExistingData()
-  }, [searchParams, appState.dealId])
+  }, [searchParams?.get('applicationId'), appState.dealId])
   
   // Auto-focus first field
   useEffect(() => {
@@ -281,11 +334,20 @@ export default function CoBorrowerEditPage() {
 
   const handlePreviousAddressSave = (addressData: AddressData) => {
     const formattedAddress = `${addressData.street}, ${addressData.city}, ${addressData.state} ${addressData.zipCode}`
-    handleInputChange('previousAddress', formattedAddress)
-    handleInputChange('previousAddressStreet', addressData.street)
-    handleInputChange('previousAddressCity', addressData.city)
-    handleInputChange('previousAddressState', addressData.state)
-    handleInputChange('previousAddressZip', addressData.zipCode)
+    if (editingPreviousAddressIndex !== null) {
+      // Update the specific previous address in the array
+      const updated = [...formData.previousAddresses]
+      updated[editingPreviousAddressIndex] = {
+        ...updated[editingPreviousAddressIndex],
+        address: formattedAddress,
+        addressStreet: addressData.street,
+        addressCity: addressData.city,
+        addressState: addressData.state,
+        addressZip: addressData.zipCode,
+      }
+      handleInputChange('previousAddresses', updated)
+      setEditingPreviousAddressIndex(null)
+    }
     setIsPreviousAddressModalOpen(false)
   }
 
@@ -309,8 +371,49 @@ export default function CoBorrowerEditPage() {
     if (!formData.currentAddress.trim()) {
       newErrors.currentAddress = 'Current Address is required'
     }
-    if (formData.hasPreviousAddress && !formData.previousAddress.trim()) {
-      newErrors.previousAddress = 'Previous Address is required if you have lived at current address less than 2 years'
+    // Validate move-in date for current address
+    if (!formData.moveInDateCurrent.trim()) {
+      newErrors.moveInDateCurrent = 'Move-in date is required'
+    }
+    
+    // Validate previous addresses if needed (less than 2 years at current address)
+    const currentDuration = calculateDurationFromMoveInDate(formData.moveInDateCurrent)
+    const totalMonthsAtCurrent = (currentDuration.years * 12) + currentDuration.months
+    const needsPreviousAddresses = totalMonthsAtCurrent < 24
+    
+    if (needsPreviousAddresses) {
+      // Calculate total months covered by previous addresses
+      let totalPreviousMonths = 0
+      formData.previousAddresses.forEach((prev, index) => {
+        if (!prev.address.trim()) {
+          newErrors[`previousAddress_${index}`] = 'Previous address is required'
+        }
+        if (!prev.moveInDate) {
+          newErrors[`previousMoveInDate_${index}`] = 'Move-in date is required'
+        }
+        if (!prev.moveOutDate) {
+          newErrors[`previousMoveOutDate_${index}`] = 'Move-out date is required'
+        }
+        
+        // Validate date order
+        if (prev.moveInDate && prev.moveOutDate && new Date(prev.moveInDate) >= new Date(prev.moveOutDate)) {
+          newErrors[`previousMoveOutDate_${index}`] = 'Move-out date must be after move-in date'
+        }
+        
+        // Calculate duration for this previous address
+        if (prev.moveInDate && prev.moveOutDate) {
+          const moveIn = new Date(prev.moveInDate)
+          const moveOut = new Date(prev.moveOutDate)
+          const diffMonths = Math.floor((moveOut.getTime() - moveIn.getTime()) / (1000 * 60 * 60 * 24 * 30.44))
+          totalPreviousMonths += diffMonths
+        }
+      })
+      
+      // Check if we need more previous addresses
+      const remainingMonths = 24 - totalMonthsAtCurrent - totalPreviousMonths
+      if (remainingMonths > 0 && formData.previousAddresses.length === 0) {
+        newErrors.previousAddress = 'Previous address is required if you have lived at current address less than 2 years'
+      }
     }
     if (!formData.maritalStatus) {
       newErrors.maritalStatus = 'Marital Status is required'
@@ -343,7 +446,6 @@ export default function CoBorrowerEditPage() {
     try {
       if (hasChanges) {
         const { streetAddress, city, state, zipCode } = parseAddress(formData.currentAddress)
-        const previousAddressParts = formData.hasPreviousAddress ? parseAddress(formData.previousAddress) : null
 
         const saveData = {
           coBorrower: {
@@ -370,18 +472,46 @@ export default function CoBorrowerEditPage() {
             state: state,
             zipCode: zipCode,
             currentAddress: formData.currentAddress,
-            yearsAtCurrentAddress: formData.yearsAtCurrentAddress ? parseInt(formData.yearsAtCurrentAddress) : undefined,
-            monthsAtCurrentAddress: formData.monthsAtCurrentAddress ? parseInt(formData.monthsAtCurrentAddress) : undefined,
+            // Convert move-in date to years/months for backend
+            yearsAtCurrentAddress: (() => {
+              const duration = calculateDurationFromMoveInDate(formData.moveInDateCurrent)
+              return duration.years > 0 ? duration.years : undefined
+            })(),
+            monthsAtCurrentAddress: (() => {
+              const duration = calculateDurationFromMoveInDate(formData.moveInDateCurrent)
+              return duration.months > 0 ? duration.months : undefined
+            })(),
             housingStatus: formData.housingStatus || undefined,
             
-            // Previous Address
-            previousAddress: previousAddressParts ? previousAddressParts.streetAddress : undefined,
-            previousAddressCity: previousAddressParts ? previousAddressParts.city : undefined,
-            previousAddressState: previousAddressParts ? previousAddressParts.state : undefined,
-            previousAddressZip: previousAddressParts ? previousAddressParts.zipCode : undefined,
-            yearsAtPreviousAddress: formData.yearsAtPreviousAddress ? parseInt(formData.yearsAtPreviousAddress) : undefined,
-            monthsAtPreviousAddress: formData.monthsAtPreviousAddress ? parseInt(formData.monthsAtPreviousAddress) : undefined,
-            previousHousingStatus: formData.previousHousingStatus || undefined,
+            // Previous Addresses - convert move-in dates to years/months for backend
+            // For now, send the first previous address (backend may need to be updated to support array)
+            previousAddress: formData.previousAddresses.length > 0 ? formData.previousAddresses[0].addressStreet : undefined,
+            previousAddressCity: formData.previousAddresses.length > 0 ? formData.previousAddresses[0].addressCity : undefined,
+            previousAddressState: formData.previousAddresses.length > 0 ? formData.previousAddresses[0].addressState : undefined,
+            previousAddressZip: formData.previousAddresses.length > 0 ? formData.previousAddresses[0].addressZip : undefined,
+            yearsAtPreviousAddress: formData.previousAddresses.length > 0 ? (() => {
+              const prev = formData.previousAddresses[0]
+              if (prev.moveInDate && prev.moveOutDate) {
+                const moveIn = new Date(prev.moveInDate)
+                const moveOut = new Date(prev.moveOutDate)
+                const diffMonths = Math.floor((moveOut.getTime() - moveIn.getTime()) / (1000 * 60 * 60 * 24 * 30.44))
+                const years = Math.floor(diffMonths / 12)
+                return years > 0 ? years : undefined
+              }
+              return undefined
+            })() : undefined,
+            monthsAtPreviousAddress: formData.previousAddresses.length > 0 ? (() => {
+              const prev = formData.previousAddresses[0]
+              if (prev.moveInDate && prev.moveOutDate) {
+                const moveIn = new Date(prev.moveInDate)
+                const moveOut = new Date(prev.moveOutDate)
+                const diffMonths = Math.floor((moveOut.getTime() - moveIn.getTime()) / (1000 * 60 * 60 * 24 * 30.44))
+                const months = diffMonths % 12
+                return months > 0 ? months : undefined
+              }
+              return undefined
+            })() : undefined,
+            previousHousingStatus: formData.previousAddresses.length > 0 ? formData.previousAddresses[0].housingStatus || undefined : undefined,
             
             // Citizenship & Residency
             citizenshipType: formData.citizenshipType,
@@ -434,17 +564,44 @@ export default function CoBorrowerEditPage() {
   }
 
   const handleBack = () => {
-    const applicationId = searchParams?.get('applicationId') || appState.dealId
+    const applicationId = searchParams?.get('applicationId') || appState.dealId || sessionStorage.getItem('applicationId')
+    console.log('CoBorrowerEdit: Back button clicked, applicationId:', applicationId)
+    // Go back to GettingStartedSummary (review page)
     if (applicationId) {
       router.push(`/application/review?applicationId=${applicationId}`)
     } else {
-      router.push('/application/review')
+      // Fallback: try to get from sessionStorage
+      const storedAppId = sessionStorage.getItem('applicationId')
+      if (storedAppId) {
+        router.push(`/application/review?applicationId=${storedAppId}`)
+      } else {
+        router.push('/application/review')
+      }
     }
   }
 
   // Calculate total months at current address to determine if previous address is needed
-  const totalMonthsAtCurrent = (parseInt(formData.yearsAtCurrentAddress || '0') * 12) + parseInt(formData.monthsAtCurrentAddress || '0')
-  const showPreviousAddress = totalMonthsAtCurrent < 24 || formData.hasPreviousAddress
+  const currentDuration = calculateDurationFromMoveInDate(formData.moveInDateCurrent)
+  const totalMonthsAtCurrent = (currentDuration.years * 12) + currentDuration.months
+  const needsPreviousAddresses = totalMonthsAtCurrent < 24
+  
+  // Calculate how many months we need to cover with previous addresses
+  const remainingMonths = Math.max(0, 24 - totalMonthsAtCurrent)
+  
+  // Calculate total months covered by existing previous addresses
+  let totalPreviousMonths = 0
+  formData.previousAddresses.forEach((prev) => {
+    if (prev.moveInDate && prev.moveOutDate) {
+      const moveIn = new Date(prev.moveInDate)
+      const moveOut = new Date(prev.moveOutDate)
+      const diffMonths = Math.floor((moveOut.getTime() - moveIn.getTime()) / (1000 * 60 * 60 * 24 * 30.44))
+      totalPreviousMonths += diffMonths
+    }
+  })
+  
+  // Determine if we need more previous addresses
+  const stillNeedsMore = remainingMonths > totalPreviousMonths
+  const showPreviousAddresses = needsPreviousAddresses && (formData.previousAddresses.length > 0 || stillNeedsMore)
 
   if (isLoading) {
     return (
@@ -734,36 +891,44 @@ export default function CoBorrowerEditPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="yearsAtCurrentAddress" className="text-sm font-medium text-gray-700">
-                Years at Current Address
+              <Label htmlFor="moveInDateCurrent" className="text-sm font-medium text-gray-700">
+                Move-in Date <span className="text-red-500">*</span>
               </Label>
               <Input
-                id="yearsAtCurrentAddress"
-                name="yearsAtCurrentAddress"
-                type="number"
-                min="0"
-                value={formData.yearsAtCurrentAddress}
-                onChange={(e) => handleInputChange('yearsAtCurrentAddress', e.target.value)}
-                className="mt-1"
+                id="moveInDateCurrent"
+                name="moveInDateCurrent"
+                type="date"
+                required
+                value={formData.moveInDateCurrent}
+                onChange={(e) => {
+                  handleInputChange('moveInDateCurrent', e.target.value)
+                  // Auto-calculate move-out date for previous addresses when current move-in date changes
+                  if (formData.previousAddresses.length > 0) {
+                    const updatedAddresses = formData.previousAddresses.map((prev, index) => {
+                      if (index === 0 && !prev.moveOutDate) {
+                        return { ...prev, moveOutDate: e.target.value }
+                      }
+                      return prev
+                    })
+                    handleInputChange('previousAddresses', updatedAddresses)
+                  }
+                }}
+                className={`mt-1 ${errors.moveInDateCurrent ? 'border-red-500' : ''}`}
+                max={new Date().toISOString().split('T')[0]} // Cannot be in the future
               />
-            </div>
-
-            <div>
-              <Label htmlFor="monthsAtCurrentAddress" className="text-sm font-medium text-gray-700">
-                Months at Current Address
-              </Label>
-              <Input
-                id="monthsAtCurrentAddress"
-                name="monthsAtCurrentAddress"
-                type="number"
-                min="0"
-                max="11"
-                value={formData.monthsAtCurrentAddress}
-                onChange={(e) => handleInputChange('monthsAtCurrentAddress', e.target.value)}
-                className="mt-1"
-              />
+              {errors.moveInDateCurrent && (
+                <p className="mt-1 text-sm text-red-500">{errors.moveInDateCurrent}</p>
+              )}
+              {formData.moveInDateCurrent && (
+                <p className="mt-1 text-xs text-gray-500">
+                  {(() => {
+                    const duration = calculateDurationFromMoveInDate(formData.moveInDateCurrent)
+                    return `Duration: ${duration.years} year${duration.years !== 1 ? 's' : ''}, ${duration.months} month${duration.months !== 1 ? 's' : ''}`
+                  })()}
+                </p>
+              )}
             </div>
 
             <div>
@@ -785,91 +950,176 @@ export default function CoBorrowerEditPage() {
           </div>
         </div>
 
-        {/* Previous Address Section (conditional) */}
-        {showPreviousAddress && (
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Previous Address</h3>
+        {/* Previous Addresses Section (conditional - shown until 2 years is covered) */}
+        {showPreviousAddresses && (
+          <div className="space-y-6">
+            <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
+              Previous Address{formData.previousAddresses.length !== 1 ? 'es' : ''}
+              {stillNeedsMore && <span className="text-red-500 ml-2">*</span>}
+            </h3>
             
-            <div>
-              <Label htmlFor="previousAddress" className="text-sm font-medium text-gray-700">
-                Previous Address {showPreviousAddress && <span className="text-red-500">*</span>}
-              </Label>
-              <div className="mt-1 flex items-center gap-2">
-                <Input
-                  id="previousAddress"
-                  name="previousAddress"
-                  type="text"
-                  required={showPreviousAddress}
-                  value={formData.previousAddress}
-                  onClick={() => setIsPreviousAddressModalOpen(true)}
-                  readOnly
-                  className={`flex-1 ${errors.previousAddress ? 'border-red-500' : ''}`}
-                  placeholder="Click to enter address"
-                />
+            {formData.previousAddresses.map((prev, index) => {
+              const prevDuration = prev.moveInDate && prev.moveOutDate 
+                ? calculateDurationFromMoveInDate(prev.moveInDate)
+                : { years: 0, months: 0 }
+              const prevMonths = (prevDuration.years * 12) + prevDuration.months
+              
+              return (
+                <div key={index} className="space-y-4 p-4 border border-gray-200 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-md font-medium text-gray-800">Previous Address {index + 1}</h4>
+                    {formData.previousAddresses.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const updated = formData.previousAddresses.filter((_, i) => i !== index)
+                          handleInputChange('previousAddresses', updated)
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">
+                      Address <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="mt-1 flex items-center gap-2">
+                      <Input
+                        type="text"
+                        required
+                        value={prev.address}
+                        onClick={() => {
+                          setIsPreviousAddressModalOpen(true)
+                          setEditingPreviousAddressIndex(index)
+                        }}
+                        readOnly
+                        className={`flex-1 ${errors[`previousAddress_${index}`] ? 'border-red-500' : ''}`}
+                        placeholder="Click to enter address"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setIsPreviousAddressModalOpen(true)
+                          setEditingPreviousAddressIndex(index)
+                        }}
+                        className="px-4"
+                      >
+                        <MapPin className="w-4 h-4 mr-2" />
+                        Address
+                      </Button>
+                    </div>
+                    {errors[`previousAddress_${index}`] && (
+                      <p className="mt-1 text-sm text-red-500">{errors[`previousAddress_${index}`]}</p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">
+                        Move-in Date <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        type="date"
+                        required
+                        value={prev.moveInDate}
+                        onChange={(e) => {
+                          const updated = [...formData.previousAddresses]
+                          updated[index] = { ...updated[index], moveInDate: e.target.value }
+                          handleInputChange('previousAddresses', updated)
+                        }}
+                        className={`mt-1 ${errors[`previousMoveInDate_${index}`] ? 'border-red-500' : ''}`}
+                        max={prev.moveOutDate || formData.moveInDateCurrent || new Date().toISOString().split('T')[0]}
+                      />
+                      {errors[`previousMoveInDate_${index}`] && (
+                        <p className="mt-1 text-sm text-red-500">{errors[`previousMoveInDate_${index}`]}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">
+                        Move-out Date <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        type="date"
+                        required
+                        value={prev.moveOutDate}
+                        onChange={(e) => {
+                          const updated = [...formData.previousAddresses]
+                          updated[index] = { ...updated[index], moveOutDate: e.target.value }
+                          handleInputChange('previousAddresses', updated)
+                        }}
+                        className={`mt-1 ${errors[`previousMoveOutDate_${index}`] ? 'border-red-500' : ''}`}
+                        min={prev.moveInDate}
+                        max={formData.moveInDateCurrent || new Date().toISOString().split('T')[0]}
+                      />
+                      {errors[`previousMoveOutDate_${index}`] && (
+                        <p className="mt-1 text-sm text-red-500">{errors[`previousMoveOutDate_${index}`]}</p>
+                      )}
+                      {prev.moveInDate && prev.moveOutDate && (
+                        <p className="mt-1 text-xs text-gray-500">
+                          Duration: {prevDuration.years} year{prevDuration.years !== 1 ? 's' : ''}, {prevDuration.months} month{prevDuration.months !== 1 ? 's' : ''}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">
+                        Housing Status
+                      </Label>
+                      <Select
+                        value={prev.housingStatus}
+                        onValueChange={(value) => {
+                          const updated = [...formData.previousAddresses]
+                          updated[index] = { ...updated[index], housingStatus: value }
+                          handleInputChange('previousAddresses', updated)
+                        }}
+                        className="mt-1"
+                      >
+                        <option value="">Select</option>
+                        <option value="Own">Own</option>
+                        <option value="Rent">Rent</option>
+                        <option value="Other">Other</option>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+            
+            {stillNeedsMore && (
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">
+                  <strong>Additional address required:</strong> You need to provide {remainingMonths - totalPreviousMonths} more month{remainingMonths - totalPreviousMonths !== 1 ? 's' : ''} of address history to cover the 2-year requirement.
+                </p>
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setIsPreviousAddressModalOpen(true)}
-                  className="px-4"
+                  onClick={() => {
+                    const newAddress = {
+                      address: '',
+                      addressStreet: '',
+                      addressCity: '',
+                      addressState: '',
+                      addressZip: '',
+                      moveInDate: '',
+                      moveOutDate: formData.previousAddresses.length > 0 
+                        ? formData.previousAddresses[formData.previousAddresses.length - 1].moveInDate 
+                        : formData.moveInDateCurrent || '',
+                      housingStatus: '',
+                    }
+                    handleInputChange('previousAddresses', [...formData.previousAddresses, newAddress])
+                  }}
+                  className="mt-2"
                 >
-                  <MapPin className="w-4 h-4 mr-2" />
-                  Address
+                  Add Another Previous Address
                 </Button>
               </div>
-              {errors.previousAddress && (
-                <p className="mt-1 text-sm text-red-500">{errors.previousAddress}</p>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <Label htmlFor="yearsAtPreviousAddress" className="text-sm font-medium text-gray-700">
-                  Years at Previous Address
-                </Label>
-                <Input
-                  id="yearsAtPreviousAddress"
-                  name="yearsAtPreviousAddress"
-                  type="number"
-                  min="0"
-                  value={formData.yearsAtPreviousAddress}
-                  onChange={(e) => handleInputChange('yearsAtPreviousAddress', e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="monthsAtPreviousAddress" className="text-sm font-medium text-gray-700">
-                  Months at Previous Address
-                </Label>
-                <Input
-                  id="monthsAtPreviousAddress"
-                  name="monthsAtPreviousAddress"
-                  type="number"
-                  min="0"
-                  max="11"
-                  value={formData.monthsAtPreviousAddress}
-                  onChange={(e) => handleInputChange('monthsAtPreviousAddress', e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="previousHousingStatus" className="text-sm font-medium text-gray-700">
-                  Housing Status
-                </Label>
-                <Select
-                  id="previousHousingStatus"
-                  value={formData.previousHousingStatus}
-                  onValueChange={(value) => handleInputChange('previousHousingStatus', value)}
-                  className="mt-1"
-                >
-                  <option value="">Select</option>
-                  <option value="Own">Own</option>
-                  <option value="Rent">Rent</option>
-                  <option value="Other">Other</option>
-                </Select>
-              </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -1045,13 +1295,24 @@ export default function CoBorrowerEditPage() {
 
       <AddressModal
         isOpen={isPreviousAddressModalOpen}
-        onClose={() => setIsPreviousAddressModalOpen(false)}
+        onClose={() => {
+          setIsPreviousAddressModalOpen(false)
+          setEditingPreviousAddressIndex(null)
+        }}
         onSave={handlePreviousAddressSave}
         initialData={{
-          street: formData.previousAddressStreet,
-          city: formData.previousAddressCity,
-          state: formData.previousAddressState,
-          zipCode: formData.previousAddressZip,
+          street: editingPreviousAddressIndex !== null && formData.previousAddresses[editingPreviousAddressIndex]
+            ? formData.previousAddresses[editingPreviousAddressIndex].addressStreet
+            : formData.previousAddressStreet || '',
+          city: editingPreviousAddressIndex !== null && formData.previousAddresses[editingPreviousAddressIndex]
+            ? formData.previousAddresses[editingPreviousAddressIndex].addressCity
+            : formData.previousAddressCity || '',
+          state: editingPreviousAddressIndex !== null && formData.previousAddresses[editingPreviousAddressIndex]
+            ? formData.previousAddresses[editingPreviousAddressIndex].addressState
+            : formData.previousAddressState || '',
+          zipCode: editingPreviousAddressIndex !== null && formData.previousAddresses[editingPreviousAddressIndex]
+            ? formData.previousAddresses[editingPreviousAddressIndex].addressZip
+            : formData.previousAddressZip || '',
         }}
       />
     </Form1003Layout>

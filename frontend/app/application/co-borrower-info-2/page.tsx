@@ -156,7 +156,7 @@ export default function CoBorrowerInfoPage2() {
     // Always load co-borrower-info-2 fields from database when form is accessed
     // This ensures data is fresh whether accessed via forward or back navigation
     loadExistingData()
-  }, [searchParams, appState.dealId])
+  }, [searchParams?.get('applicationId'), appState.dealId])
   
   // Auto-focus first field when form is ready
   useEffect(() => {
@@ -181,26 +181,96 @@ export default function CoBorrowerInfoPage2() {
   }
 
   const parseAddress = (address: string) => {
+    if (!address || !address.trim()) {
+      return { streetAddress: '', city: '', state: '', zipCode: '' }
+    }
+    
+    // Backend format: "street, city, state, zipCode" (4 comma-separated parts)
+    // OR: "street, city, state zipCode" (3 parts where last is "state zipCode")
     const parts = address.split(',').map(p => p.trim())
-    if (parts.length >= 3) {
+    
+    // Format: "street, city, state, zipCode" (4 parts - backend joins with ", ")
+    if (parts.length >= 4) {
       const streetAddress = parts[0]
       const city = parts[1]
-      const stateZip = parts[2].split(' ')
-      const state = stateZip[0]
-      const zipCode = stateZip.slice(1).join(' ')
-      return { streetAddress, city, state, zipCode }
-    }
-    if (parts.length === 2) {
-      const streetAddress = parts[0]
-      const cityStateZip = parts[1].split(' ')
-      if (cityStateZip.length >= 3) {
-        const city = cityStateZip.slice(0, -2).join(' ')
-        const state = cityStateZip[cityStateZip.length - 2]
-        const zipCode = cityStateZip[cityStateZip.length - 1]
-        return { streetAddress, city, state, zipCode }
+      const state = parts[2]
+      const zipCode = parts.slice(3).join(' ') // In case zip has spaces
+      return {
+        streetAddress: streetAddress.trim(),
+        city: city.trim(),
+        state: state.trim().toUpperCase(),
+        zipCode: zipCode.trim()
       }
     }
-    return { streetAddress: address, city: '', state: '', zipCode: '' }
+    
+    // Format: "street, city, state zipCode" (3 parts - last part is "state zipCode")
+    if (parts.length === 3) {
+      const streetAddress = parts[0]
+      const city = parts[1]
+      const stateZip = parts[2].trim()
+      
+      // Try to split state and zip code
+      // Pattern: "State 12345" or "State  12345" (one or more spaces)
+      const stateZipMatch = stateZip.match(/^([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i)
+      
+      if (stateZipMatch) {
+        return {
+          streetAddress: streetAddress.trim(),
+          city: city.trim(),
+          state: stateZipMatch[1].toUpperCase(),
+          zipCode: stateZipMatch[2]
+        }
+      }
+      
+      // Fallback: split by whitespace, assume first is state, rest is zip
+      const stateZipParts = stateZip.split(/\s+/).filter(p => p.trim())
+      if (stateZipParts.length >= 2) {
+        const state = stateZipParts[0].toUpperCase()
+        const zipCode = stateZipParts.slice(1).join(' ')
+        return {
+          streetAddress: streetAddress.trim(),
+          city: city.trim(),
+          state: state,
+          zipCode: zipCode.trim()
+        }
+      }
+    }
+    
+    // Format: "street, city state zipCode" (2 parts)
+    if (parts.length === 2) {
+      const streetAddress = parts[0]
+      const cityStateZip = parts[1].trim()
+      
+      // Try to match "City State ZipCode" pattern
+      const cityStateZipMatch = cityStateZip.match(/^(.+?)\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i)
+      
+      if (cityStateZipMatch) {
+        return {
+          streetAddress: streetAddress.trim(),
+          city: cityStateZipMatch[1].trim(),
+          state: cityStateZipMatch[2].toUpperCase(),
+          zipCode: cityStateZipMatch[3]
+        }
+      }
+      
+      // Fallback: split by spaces, assume last 2 are state and zip
+      const cityStateZipParts = cityStateZip.split(/\s+/).filter(p => p.trim())
+      if (cityStateZipParts.length >= 3) {
+        const city = cityStateZipParts.slice(0, -2).join(' ')
+        const state = cityStateZipParts[cityStateZipParts.length - 2].toUpperCase()
+        const zipCode = cityStateZipParts[cityStateZipParts.length - 1]
+        return {
+          streetAddress: streetAddress.trim(),
+          city: city.trim(),
+          state: state,
+          zipCode: zipCode.trim()
+        }
+      }
+    }
+    
+    // If we can't parse it, return empty components
+    console.warn('CoBorrowerInfo2: Could not parse address:', address, 'parts:', parts)
+    return { streetAddress: address.trim(), city: '', state: '', zipCode: '' }
   }
 
   const handleAddressSave = (addressData: AddressData) => {
@@ -245,10 +315,29 @@ export default function CoBorrowerInfoPage2() {
     setErrors({})
 
     try {
-      // Only save if form data has changed
+      // Always parse and validate address before saving
+      // Parse address - ensure we have all components
+      const { streetAddress, city, state, zipCode } = parseAddress(formData.currentAddress)
+      
+      console.log('CoBorrowerInfo2: Parsing address:', formData.currentAddress)
+      console.log('CoBorrowerInfo2: Parsed components:', { streetAddress, city, state, zipCode })
+      
+      // Validate parsed address components - all are required
+      if (!streetAddress?.trim() || !city?.trim() || !state?.trim() || !zipCode?.trim()) {
+        console.error('CoBorrowerInfo2: Address parsing failed:', { streetAddress, city, state, zipCode })
+        console.error('CoBorrowerInfo2: Original address string:', formData.currentAddress)
+        setErrors({ 
+          currentAddress: 'Address format is invalid. Please click the address field to edit it and ensure all fields (street, city, state, zip) are filled.',
+          submit: 'Please fix the address before continuing.'
+        })
+        setIsSubmitting(false)
+        // Open address modal to help user fix it
+        setIsAddressModalOpen(true)
+        return
+      }
+      
+      // Only save if form data has changed (but always validate address above)
       if (hasChanges) {
-        // Parse address if needed
-        const { streetAddress, city, state, zipCode } = parseAddress(formData.currentAddress)
 
         // Save co-borrower additional information
         // Note: Do NOT include email/phone - the co-borrower ID should be found via the deal
@@ -258,13 +347,15 @@ export default function CoBorrowerInfoPage2() {
             maritalStatus: formData.maritalStatus,
             isVeteran: formData.isVeteran,
             liveTogether: formData.liveTogether,
-            address: streetAddress,
-            city: city,
-            state: state,
-            zipCode: zipCode,
+            address: streetAddress.trim(),
+            city: city.trim(),
+            state: state.trim(),
+            zipCode: zipCode.trim(),
           },
           nextFormStep: 'review', // Set next form step to Getting Started Summary
         }
+        
+        console.log('CoBorrowerInfo2: Saving data:', saveData)
 
         const response = await urlaApi.saveApplication(applicationId, saveData)
         
@@ -302,7 +393,8 @@ export default function CoBorrowerInfoPage2() {
 
   const handleBack = () => {
     // Go back to co-borrower-info-1
-    const applicationId = searchParams?.get('applicationId') || appState.dealId
+    const applicationId = searchParams?.get('applicationId') || appState.dealId || sessionStorage.getItem('applicationId')
+    console.log('CoBorrowerInfo2: Back button clicked, applicationId:', applicationId)
     if (applicationId) {
       router.push(`/application/co-borrower-info-1?applicationId=${applicationId}`)
     } else {

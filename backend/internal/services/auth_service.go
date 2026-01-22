@@ -34,15 +34,6 @@ func (s *AuthService) GetConfig() *config.Config {
 	return s.cfg
 }
 
-// RegisterRequest represents a registration request (borrowers only)
-// DEPRECATED: Use VerifyAndRegisterRequest instead for 2FA
-type RegisterRequest struct {
-	Email     string `json:"email" binding:"required,email"`
-	Password  string `json:"password" binding:"required,min=8"`
-	FirstName string `json:"firstName" binding:"required"`
-	LastName  string `json:"lastName" binding:"required"`
-	Phone     string `json:"phone" binding:"required"` // Phone is required for 2FA
-}
 
 // VerifyAndRegisterRequest represents a registration request with verification code
 // NOTE: VerificationCode is optional when 2FA is disabled

@@ -11,6 +11,7 @@ import { Edit2, Home, User } from 'lucide-react'
 interface GettingStartedSummaryProps {
   applicationId?: string
   onEditBorrower?: () => void
+  onEditCoBorrower?: () => void
   onContinue?: () => void
   onBack?: () => void
 }
@@ -18,6 +19,7 @@ interface GettingStartedSummaryProps {
 export function GettingStartedSummary({
   applicationId,
   onEditBorrower,
+  onEditCoBorrower,
   onContinue,
   onBack,
 }: GettingStartedSummaryProps) {
@@ -238,16 +240,24 @@ export function GettingStartedSummary({
     } else {
       // Navigate to comprehensive borrower edit page with all URLA 1003 Section 1 fields
       const appId = applicationId || sessionStorage.getItem('applicationId')
+      console.log('GettingStartedSummary: Edit borrower clicked, applicationId:', appId)
       const url = appId ? `/application/borrower-edit?applicationId=${appId}` : '/application/borrower-edit'
+      console.log('GettingStartedSummary: Navigating to:', url)
       router.push(url)
     }
   }
 
   const handleEditCoBorrower = () => {
-    // Navigate to comprehensive co-borrower edit page with all URLA 1003 Section 1 fields
-    const appId = applicationId || sessionStorage.getItem('applicationId')
-    const url = appId ? `/application/co-borrower-edit?applicationId=${appId}` : '/application/co-borrower-edit'
-    router.push(url)
+    if (onEditCoBorrower) {
+      onEditCoBorrower()
+    } else {
+      // Navigate to comprehensive co-borrower edit page with all URLA 1003 Section 1 fields
+      const appId = applicationId || sessionStorage.getItem('applicationId')
+      console.log('GettingStartedSummary: Edit co-borrower clicked, applicationId:', appId)
+      const url = appId ? `/application/co-borrower-edit?applicationId=${appId}` : '/application/co-borrower-edit'
+      console.log('GettingStartedSummary: Navigating to:', url)
+      router.push(url)
+    }
   }
 
   const handleContinue = async () => {

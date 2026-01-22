@@ -385,6 +385,60 @@ func (r *BorrowerRepository) UpdateBorrowerConsentsAndMilitary(id string, milita
 	return err
 }
 
+// UpdateBorrowerName updates borrower first and last name
+func (r *BorrowerRepository) UpdateBorrowerName(id string, firstName, lastName *string) error {
+	query := `UPDATE borrower SET 
+	          first_name = COALESCE($1, first_name),
+	          last_name = COALESCE($2, last_name),
+	          updated_at = CURRENT_TIMESTAMP
+	          WHERE id = $3`
+	_, err := r.db.Exec(query, firstName, lastName, id)
+	return err
+}
+
+// UpdateBorrowerSSN updates borrower SSN (taxpayer_identifier_value)
+func (r *BorrowerRepository) UpdateBorrowerSSN(id string, ssn string) error {
+	query := `UPDATE borrower SET 
+	          taxpayer_identifier_value = $1,
+	          updated_at = CURRENT_TIMESTAMP
+	          WHERE id = $2`
+	_, err := r.db.Exec(query, ssn, id)
+	return err
+}
+
+// UpdateBorrowerCitizenship updates borrower citizenship/residency type
+func (r *BorrowerRepository) UpdateBorrowerCitizenship(id string, citizenshipType string) error {
+	query := `UPDATE borrower SET 
+	          citizenship_residency_type = $1,
+	          updated_at = CURRENT_TIMESTAMP
+	          WHERE id = $2`
+	_, err := r.db.Exec(query, citizenshipType, id)
+	return err
+}
+
+// UpdateBorrowerDependents updates borrower dependent count
+func (r *BorrowerRepository) UpdateBorrowerDependents(id string, count int) error {
+	query := `UPDATE borrower SET 
+	          dependent_count = $1,
+	          updated_at = CURRENT_TIMESTAMP
+	          WHERE id = $2`
+	_, err := r.db.Exec(query, count, id)
+	return err
+}
+
+// UpdateBorrowerAdditionalPhones updates additional phone fields (homePhone, mobilePhone, workPhone, workPhoneExt)
+func (r *BorrowerRepository) UpdateBorrowerAdditionalPhones(id string, homePhone, mobilePhone, workPhone, workPhoneExt *string) error {
+	query := `UPDATE borrower SET 
+	          home_phone = COALESCE($1, home_phone),
+	          mobile_phone = COALESCE($2, mobile_phone),
+	          work_phone = COALESCE($3, work_phone),
+	          work_phone_extension = COALESCE($4, work_phone_extension),
+	          updated_at = CURRENT_TIMESTAMP
+	          WHERE id = $5`
+	_, err := r.db.Exec(query, homePhone, mobilePhone, workPhone, workPhoneExt, id)
+	return err
+}
+
 // CreateResidence creates a residence record for a borrower
 func (r *BorrowerRepository) CreateResidence(borrowerID string, residencyType, address, city, state, zipCode string) (string, error) {
 	query := `INSERT INTO residence (borrower_id, residency_type, address_line_text, city_name, state_code, postal_code) 
@@ -464,6 +518,39 @@ func (r *BorrowerRepository) UpdateOrCreateResidence(borrowerID string, residenc
 		_, err = r.CreateResidence(borrowerID, residencyType, address, city, state, zipCode)
 		return err
 	}
+}
+
+// DeleteFormerResidences deletes all former residence records for a borrower
+func (r *BorrowerRepository) DeleteFormerResidences(borrowerID string) error {
+	query := `DELETE FROM residence 
+	          WHERE borrower_id = $1 AND residency_type = 'BorrowerFormerResidence'`
+	_, err := r.db.Exec(query, borrowerID)
+	return err
+}
+
+// CreateFormerResidence creates a former residence record for a borrower
+func (r *BorrowerRepository) CreateFormerResidence(borrowerID, address, city, state, zipCode string, durationYears, durationMonths *int, housingStatus *string) error {
+	var residencyBasisType *string
+	if housingStatus != nil {
+		// Map housing status to residency_basis_type
+		switch *housingStatus {
+		case "Own":
+			own := "Own"
+			residencyBasisType = &own
+		case "Rent":
+			rent := "Rent"
+			residencyBasisType = &rent
+		case "Other":
+			// Leave as NULL for "Other"
+		}
+	}
+	
+	query := `INSERT INTO residence (
+	          borrower_id, residency_type, residency_basis_type, address_line_text, city_name,
+	          state_code, postal_code, duration_years, duration_months
+	          ) VALUES ($1, 'BorrowerFormerResidence', $2, $3, $4, $5, $6, $7, $8)`
+	_, err := r.db.Exec(query, borrowerID, residencyBasisType, address, city, state, zipCode, durationYears, durationMonths)
+	return err
 }
 
 // Note: deal_id has been removed from borrower table

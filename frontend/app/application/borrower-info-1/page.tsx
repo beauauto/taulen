@@ -114,7 +114,7 @@ export default function BorrowerInfoPage1() {
     }
 
     loadExistingData()
-  }, [searchParams, appState.dealId])
+  }, [searchParams?.get('applicationId'), appState.dealId])
   
   // Auto-focus first field when form is loaded
   useEffect(() => {

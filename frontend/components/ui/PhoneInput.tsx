@@ -17,6 +17,7 @@ export interface PhoneInputProps {
   showPhoneType?: boolean
   className?: string
   autoComplete?: string
+  excludePhoneTypes?: string[] // Array of phone types to exclude from dropdown
 }
 
 /**
@@ -37,6 +38,7 @@ export function PhoneInput({
   showPhoneType = false,
   className = '',
   autoComplete = 'tel',
+  excludePhoneTypes = [],
 }: PhoneInputProps) {
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputValue = e.target.value
@@ -91,10 +93,10 @@ export function PhoneInput({
             className={`mt-1 ${error ? 'border-red-500' : ''}`}
           >
             <option value=""> </option>
-            <option value="HOME">Home</option>
-            <option value="MOBILE">Mobile</option>
-            <option value="WORK">Work</option>
-            <option value="OTHER">Other</option>
+            {!excludePhoneTypes.includes('HOME') && <option value="HOME">Home</option>}
+            {!excludePhoneTypes.includes('MOBILE') && <option value="MOBILE">Mobile</option>}
+            {!excludePhoneTypes.includes('WORK') && <option value="WORK">Work</option>}
+            {!excludePhoneTypes.includes('OTHER') && <option value="OTHER">Other</option>}
           </Select>
         </div>
       )}

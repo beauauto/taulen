@@ -33,7 +33,17 @@ export default function BuyReviewPage() {
   }
 
   const handleEditBorrower = () => {
-    router.push('/application/review?edit=borrower')
+    // Navigate to comprehensive borrower edit page (consistent with co-borrower edit)
+    const appId = applicationId || sessionStorage.getItem('applicationId')
+    const url = appId ? `/application/borrower-edit?applicationId=${appId}` : '/application/borrower-edit'
+    router.push(url)
+  }
+
+  const handleEditCoBorrower = () => {
+    // Navigate to comprehensive co-borrower edit page (consistent with borrower edit)
+    const appId = applicationId || sessionStorage.getItem('applicationId')
+    const url = appId ? `/application/co-borrower-edit?applicationId=${appId}` : '/application/co-borrower-edit'
+    router.push(url)
   }
 
   const handleContinue = async () => {
@@ -91,14 +101,14 @@ export default function BuyReviewPage() {
     )
   }
 
+  // Note: Borrower edit now navigates to separate page (/application/borrower-edit)
+  // This editMode check is kept for backward compatibility but should not be used
   if (editMode === 'borrower') {
-    return (
-      <BorrowerEditForm
-        applicationId={applicationId}
-        onSave={handleSaveBorrower}
-        onCancel={handleCancel}
-      />
-    )
+    // Redirect to the dedicated borrower edit page for consistency
+    const appId = applicationId || sessionStorage.getItem('applicationId')
+    const url = appId ? `/application/borrower-edit?applicationId=${appId}` : '/application/borrower-edit'
+    router.push(url)
+    return null
   }
 
   const handleBack = async () => {
@@ -136,6 +146,7 @@ export default function BuyReviewPage() {
       applicationId={applicationId}
       onEditTransaction={handleEditTransaction}
       onEditBorrower={handleEditBorrower}
+      onEditCoBorrower={handleEditCoBorrower}
       onContinue={handleContinue}
       onBack={handleBack}
     />

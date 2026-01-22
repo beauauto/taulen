@@ -88,7 +88,5 @@ type VerifyAndCreateBorrowerRequest struct {
 	// Refinance-specific fields
 	PropertyAddress    string  `json:"propertyAddress"`
 	OutstandingBalance float64 `json:"outstandingBalance"`
-	
-	// Legacy field for backward compatibility
-	EstimatedPrice float64 `json:"estimatedPrice"`
+	EstimatedPrice     float64 `json:"estimatedPrice"`
 }
