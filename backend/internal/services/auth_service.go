@@ -35,6 +35,15 @@ func (s *AuthService) GetConfig() *config.Config {
 }
 
 
+// RegisterRequest represents a registration request
+type RegisterRequest struct {
+	Email     string `json:"email" binding:"required,email"`
+	Password  string `json:"password" binding:"required,min=8"`
+	FirstName string `json:"firstName" binding:"required"`
+	LastName  string `json:"lastName" binding:"required"`
+	Phone     string `json:"phone"` // Optional
+}
+
 // VerifyAndRegisterRequest represents a registration request with verification code
 // NOTE: VerificationCode is optional when 2FA is disabled
 type VerifyAndRegisterRequest struct {

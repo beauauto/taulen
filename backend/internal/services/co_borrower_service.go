@@ -198,7 +198,7 @@ func (s *CoBorrowerService) SaveCoBorrowerData(dealID string, coBorrowerData map
 		isVeteran = existingCoBorrower.MilitaryServiceStatus.Bool
 	}
 
-	// Get address (always required now)
+	// Get address (optional for co-borrower-info-1, required for co-borrower-info-2)
 	if addr, ok := coBorrowerData["address"].(string); ok && addr != "" {
 		address = addr
 		if c, ok := coBorrowerData["city"].(string); ok {
@@ -211,9 +211,15 @@ func (s *CoBorrowerService) SaveCoBorrowerData(dealID string, coBorrowerData map
 			zipCode = z
 		}
 	}
-	if address == "" || city == "" || state == "" || zipCode == "" {
-		return errors.New("co-borrower address is required (street, city, state, and zip code)")
+	// Only require address when updating an existing co-borrower (co-borrower-info-2)
+	// For new co-borrowers (co-borrower-info-1), address is optional and will be set in co-borrower-info-2
+	if existingCoBorrower != nil {
+		// Updating existing co-borrower - address should be provided
+		if address == "" || city == "" || state == "" || zipCode == "" {
+			return errors.New("co-borrower address is required (street, city, state, and zip code)")
+		}
 	}
+	// For new co-borrower (co-borrower-info-1), address is optional - no validation needed
 
 	if existingCoBorrower != nil {
 		// Update existing co-borrower (co-borrower-info-2 case)
@@ -288,7 +294,7 @@ func (s *CoBorrowerService) SaveCoBorrowerData(dealID string, coBorrowerData map
 	}
 	log.Printf("SaveCoBorrowerData: Ensured borrower_progress entry exists for borrower %s and deal %s", coBorrowerID, dealID)
 
-	// Save address (always required now)
+	// Save address if provided (optional for co-borrower-info-1, required for co-borrower-info-2)
 	if address != "" && city != "" && state != "" && zipCode != "" {
 		err = s.borrowerRepo.UpdateOrCreateResidence(coBorrowerID, "BorrowerCurrentResidence", address, city, state, zipCode)
 		if err != nil {
